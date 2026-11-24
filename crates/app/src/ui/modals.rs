@@ -12,16 +12,16 @@ use std::time::{Duration, Instant};
 use super::Acts;
 use super::widgets::{self, Button};
 use crate::core::{
-    Action, Core, ErrTo, FormId, Modal, Pick, PopKind, RoleEditor, ShareTab, StickerTab, Then,
+    Action, Core, ErrTo, FormId, Modal, PopKind, ShareTab,
+    StickerTab, Then,
 };
 use crate::giphy::{self, FeedView, Frames, Lookup};
 use crate::icons::Icon;
 use crate::markdown;
 use crate::model::*;
 use crate::net::{self, Req};
-use crate::sounds::Cue;
 use crate::theme::{self, *};
-use crate::voice::{Noise, QUALITIES};
+use crate::voice::QUALITIES;
 use crate::{t, tf};
 
 const WIDTH: f32 = 460.0 - 44.0;
@@ -31,7 +31,6 @@ fn is_wide(m: &Modal) -> bool {
     matches!(
         m,
         Modal::EditChannel { .. }
-            | Modal::ServerSettings { .. }
             | Modal::Reports { .. }
             | Modal::Share { .. }
             | Modal::Player { .. }
@@ -42,11 +41,27 @@ pub fn draw(ctx: &egui::Context, core: &mut Core, acts: &mut Acts) {
     let Some(mut m) = core.modal.take() else {
         return;
     };
+    // Configurações has a page of its own, nearly the whole window.
+    if let Modal::Settings { display_name, tab } = &mut m {
+        super::settings::page(ctx, core, display_name, tab, acts);
+        if core.modal.is_none() {
+            core.modal = Some(m);
+        }
+        return;
+    }
+    // A server's settings too.
+    if let Modal::ServerSettings { .. } = &m {
+        super::server_settings::draw(ctx, core, &mut m, acts);
+        if core.modal.is_none() {
+            core.modal = Some(m);
+        }
+        return;
+    }
     let focus = std::mem::take(&mut core.modal_focus);
     let width = if is_wide(&m) { WIDE } else { WIDTH };
     let max_h = (ctx.content_rect().height() * 0.88 - 44.0).max(200.0);
     let frame = Frame::new()
-        .fill(BG2)
+        .fill(BG2())
         .corner_radius(CornerRadius::same(14))
         .inner_margin(Margin::same(22))
         .shadow(egui::epaint::Shadow {
@@ -109,21 +124,22 @@ fn body(ui: &mut Ui, core: &mut Core, m: &mut Modal, focus: bool, acts: &mut Act
         } => edit_channel(ui, core, *cid, name, topic, category, focus, acts),
         Modal::Invite { code } => invite(ui, core, code, acts),
         Modal::Ttl { cid } => ttl(ui, core, *cid, acts),
-        Modal::ServerSettings {
-            sid,
-            name,
-            new_role,
-            role,
-        } => server_settings(ui, core, *sid, name, new_role, role, acts),
+        // Drawn by `server_settings::draw`.
+        Modal::ServerSettings { .. } => {}
+        Modal::Notify { sid } => super::server_settings::notify_dialog(ui, core, *sid, acts),
+        Modal::Nick { sid, nick } => {
+            super::server_settings::nick_dialog(ui, core, *sid, nick, acts)
+        }
         Modal::Profile { uid } => profile(ui, core, *uid, acts),
-        Modal::Settings { display_name } => settings(ui, core, display_name, acts),
+        // Drawn by `settings_page`.
+        Modal::Settings { .. } => {}
         Modal::Report {
             mid,
             reason,
             detail,
         } => report(ui, core, *mid, reason, detail, acts),
-        Modal::Reports { sid } => reports(ui, core, *sid, acts),
-        Modal::Requests { sid } => requests(ui, core, *sid, acts),
+        Modal::Reports { sid } => reports(ui, core, *sid, acts, false),
+        Modal::Requests { sid } => requests(ui, core, *sid, acts, false),
         Modal::Share {
             tab,
             items,
@@ -192,31 +208,31 @@ fn licenses(ui: &mut Ui, acts: &mut Acts) {
         ui.label(
             egui::RichText::new(name)
                 .font(theme::bold(14.0))
-                .color(TEXT),
+                .color(TEXT()),
         );
-        ui.label(egui::RichText::new(text).color(MUTED));
+        ui.label(egui::RichText::new(text).color(MUTED()));
     }
     ui.add_space(14.0);
     ui.label(
         egui::RichText::new("SIL Open Font License 1.1")
             .font(theme::bold(14.0))
-            .color(TEXT),
+            .color(TEXT()),
     );
     ui.label(
         egui::RichText::new(crate::emoji_font::NOTO_LICENSE)
             .font(theme::tiny())
-            .color(FAINT),
+            .color(FAINT()),
     );
     ui.add_space(14.0);
     ui.label(
         egui::RichText::new(t!("modal.license_unicode_heading"))
             .font(theme::bold(14.0))
-            .color(TEXT),
+            .color(TEXT()),
     );
     ui.label(
         egui::RichText::new(crate::emoji::UNICODE_LICENSE)
             .font(theme::tiny())
-            .color(FAINT),
+            .color(FAINT()),
     );
     foot(ui, |ui| {
         if Button::ghost(t!("common.close")).show(ui).clicked() {
@@ -241,16 +257,16 @@ pub(super) fn foot(ui: &mut Ui, add: impl FnOnce(&mut Ui)) {
     );
 }
 
-fn submitted(ui: &Ui, resp: &egui::Response) -> bool {
+pub(super) fn submitted(ui: &Ui, resp: &egui::Response) -> bool {
     resp.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter))
 }
 
-fn select(ui: &mut Ui, id: &'static str, label: &str, value: &mut usize, options: &[&str]) -> bool {
+pub(super) fn select(ui: &mut Ui, id: &'static str, label: &str, value: &mut usize, options: &[&str]) -> bool {
     if !label.is_empty() {
         ui.label(
             egui::RichText::new(label.to_uppercase())
                 .font(theme::bold(12.0))
-                .color(MUTED)
+                .color(MUTED())
                 .extra_letter_spacing(0.5),
         );
         ui.add_space(2.0);
@@ -271,7 +287,7 @@ fn select(ui: &mut Ui, id: &'static str, label: &str, value: &mut usize, options
 /// A microphone or output to pick: Windows' default, or one of `list` (None
 /// while it is still being asked). Returns the new choice when one was
 /// picked (None inside: the default).
-fn device_select(
+pub(super) fn device_select(
     ui: &mut Ui,
     id: &'static str,
     label: &str,
@@ -386,21 +402,21 @@ fn add_server(
                     &r.server.initials(),
                     rect,
                     12,
-                    theme::color_or(&r.server.color, ACCENT),
-                    ACCENT_INK,
+                    theme::color_or(&r.server.color, ACCENT()),
+                    ACCENT_INK(),
                 );
                 ui.vertical(|ui| {
                     // Room left for the button.
                     ui.set_max_width((ui.available_width() - 140.0).max(80.0));
                     ui.spacing_mut().item_spacing.y = 0.0;
-                    widgets::ellipsis(ui, &r.server.name, theme::bold(14.0), TEXT);
+                    widgets::ellipsis(ui, &r.server.name, theme::bold(14.0), TEXT());
                     ui.label(
                         egui::RichText::new(tf!(
                             "modal.waiting_since",
                             time = super::chat::fmt_time(r.created)
                         ))
                         .size(13.0)
-                        .color(MUTED),
+                        .color(MUTED()),
                     );
                 });
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -746,7 +762,7 @@ fn invite(ui: &mut Ui, core: &Core, code: &str, acts: &mut Acts) {
                 TextEdit::singleline(&mut shown)
                     .desired_width(f32::INFINITY)
                     .margin(Margin::symmetric(12, 9))
-                    .background_color(BG0)
+                    .background_color(BG0())
                     .font(theme::body()),
             );
         });
@@ -812,303 +828,6 @@ fn ttl(ui: &mut Ui, core: &Core, cid: i64, acts: &mut Acts) {
     });
 }
 
-fn server_settings(
-    ui: &mut Ui,
-    core: &Core,
-    sid: i64,
-    name: &mut String,
-    new_role: &mut String,
-    editor: &mut Option<RoleEditor>,
-    acts: &mut Acts,
-) {
-    let Some(s) = core.server(sid) else { return };
-    widgets::h3(ui, t!("modal.server_settings_title"));
-    if s.can(P_MANAGE_SERVER) {
-        ui.add_space(12.0);
-        // The picture, as the rail shows it.
-        ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = 16.0;
-            let (rect, _) = ui.allocate_exact_size(vec2(64.0, 64.0), Sense::hover());
-            widgets::paint_server(
-                ui,
-                core,
-                s.icon.as_deref(),
-                &s.initials(),
-                rect,
-                18,
-                theme::color_or(&s.color, ACCENT),
-                ACCENT_INK,
-            );
-            ui.vertical(|ui| {
-                ui.spacing_mut().item_spacing.y = 6.0;
-                widgets::sub(ui, t!("modal.server_icon_hint"));
-                ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x = 8.0;
-                    if Button::ghost(t!("modal.change_image_btn"))
-                        .small()
-                        .show(ui)
-                        .clicked()
-                    {
-                        acts.later(move |c| c.pick_files(Pick::ServerIcon(sid)));
-                    }
-                    if s.icon.is_some()
-                        && Button::ghost(t!("settings.remove"))
-                            .small()
-                            .show(ui)
-                            .clicked()
-                    {
-                        acts.later(move |c| {
-                            c.call(
-                                Req::patch(format!("/servers/{sid}")).with(json!({ "icon": null })),
-                                Then::Nothing,
-                                ErrTo::Toast,
-                            )
-                        });
-                    }
-                });
-            });
-        });
-        ui.add_space(14.0);
-        let r = widgets::field(ui, t!("modal.server_name"), name, 100, false);
-        widgets::error_line(ui, core.errors.get(&FormId::RenameServer));
-        let busy = core.busy.contains(&FormId::RenameServer);
-        if (Button::primary(t!("modal.save_name_btn"))
-            .enabled(!busy)
-            .show(ui)
-            .clicked()
-            || submitted(ui, &r))
-            && !busy
-        {
-            let n = name.trim().to_owned();
-            acts.later(move |c| {
-                c.call(
-                    Req::patch(format!("/servers/{sid}")).with(json!({ "name": n })),
-                    Then::Toast(t!("modal.name_saved").into()),
-                    ErrTo::Form(FormId::RenameServer),
-                )
-            });
-        }
-        ui.add_space(10.0);
-        let mut private = s.private;
-        if widgets::check_row(
-            ui,
-            t!("modal.private_server"),
-            t!("modal.private_server_hint"),
-            &mut private,
-            true,
-        ) {
-            acts.later(move |c| c.set_private(sid, private));
-        }
-    }
-    if s.can(P_MANAGE_ROLES) && !s.roles.is_empty() {
-        widgets::divider(ui);
-        widgets::h3(ui, t!("modal.roles_title"));
-        widgets::sub(ui, t!("modal.roles_sub"));
-        ui.add_space(8.0);
-        // The selected role, loaded into the editor when it changes.
-        let wanted = editor
-            .as_ref()
-            .map(|e| e.id)
-            .filter(|id| s.role(*id).is_some())
-            .unwrap_or(s.roles[0].id);
-        let reload = editor
-            .as_ref()
-            .is_none_or(|e| e.id != wanted || e.perms < 0);
-        if reload && let Some(r) = s.role(wanted) {
-            let color = r
-                .color
-                .as_deref()
-                .and_then(theme::parse_hex)
-                .unwrap_or(Color32::from_rgb(0x96, 0x9b, 0xa8));
-            *editor = Some(RoleEditor {
-                id: r.id,
-                name: r.name.clone(),
-                color: [color.r(), color.g(), color.b()],
-                perms: r.perms,
-            });
-        }
-        ui.horizontal_top(|ui| {
-            ui.spacing_mut().item_spacing.x = 16.0;
-            ui.vertical(|ui| {
-                ui.set_width(180.0);
-                for r in &s.roles {
-                    let on = editor.as_ref().is_some_and(|e| e.id == r.id);
-                    let (rect, resp) = ui.allocate_exact_size(vec2(180.0, 30.0), Sense::click());
-                    if on {
-                        ui.painter()
-                            .rect_filled(rect, CornerRadius::same(RADIUS_SM), BG3);
-                    } else if resp.hovered() {
-                        ui.painter()
-                            .rect_filled(rect, CornerRadius::same(RADIUS_SM), BG1);
-                    }
-                    let mut child = ui.new_child(
-                        egui::UiBuilder::new()
-                            .max_rect(rect.shrink2(vec2(6.0, 5.0)))
-                            .layout(Layout::left_to_right(Align::Center)),
-                    );
-                    widgets::pill(&mut child, &r.name, r.color.as_deref());
-                    if resp.on_hover_cursor(CursorIcon::PointingHand).clicked() {
-                        let id = r.id;
-                        acts.later(move |c| {
-                            if let Some(Modal::ServerSettings { role, .. }) = &mut c.modal {
-                                *role = Some(RoleEditor {
-                                    id,
-                                    name: String::new(),
-                                    color: [0; 3],
-                                    perms: -1,
-                                });
-                            }
-                        });
-                    }
-                }
-                ui.add_space(8.0);
-                let r = widgets::input(ui, new_role, 100, false, t!("modal.new_role_placeholder"));
-                let busy = core.busy.contains(&FormId::CreateRole);
-                if (Button::ghost(t!("modal.create_role_btn"))
-                    .small()
-                    .wide()
-                    .enabled(!busy)
-                    .show(ui)
-                    .clicked()
-                    || submitted(ui, &r))
-                    && !busy
-                    && !new_role.trim().is_empty()
-                {
-                    let n = new_role.trim().to_owned();
-                    acts.later(move |c| {
-                        c.call(
-                            Req::post(format!("/servers/{sid}/roles")).with(json!({ "name": n })),
-                            Then::RoleCreated,
-                            ErrTo::Form(FormId::CreateRole),
-                        )
-                    });
-                }
-                widgets::error_line(ui, core.errors.get(&FormId::CreateRole));
-            });
-            ui.vertical(|ui| {
-                ui.set_width(ui.available_width());
-                let Some(e) = editor.as_mut() else { return };
-                let Some(role) = s.role(e.id) else { return };
-                if role.is_everyone() {
-                    widgets::sub(ui, t!("modal.everyone_perms"));
-                    ui.add_space(6.0);
-                } else {
-                    widgets::field(ui, t!("modal.role_name"), &mut e.name, 100, false);
-                    ui.label(
-                        egui::RichText::new(t!("modal.color_label"))
-                            .font(theme::bold(12.0))
-                            .color(MUTED)
-                            .extra_letter_spacing(0.5),
-                    );
-                    egui::color_picker::color_edit_button_srgb(ui, &mut e.color);
-                    ui.add_space(10.0);
-                }
-                for (bit, label, hint) in perm_labels() {
-                    let mut on = e.perms & bit != 0;
-                    let grantable = s.perms & bit != 0;
-                    if widgets::check_row(ui, label, hint, &mut on, grantable) {
-                        if on {
-                            e.perms |= bit;
-                        } else {
-                            e.perms &= !bit;
-                        }
-                    }
-                }
-                widgets::error_line(ui, core.errors.get(&FormId::SaveRole));
-                let busy = core.busy.contains(&FormId::SaveRole);
-                let rid = e.id;
-                let everyone = role.is_everyone();
-                foot(ui, |ui| {
-                    if Button::primary(t!("modal.save_role_btn"))
-                        .enabled(!busy)
-                        .show(ui)
-                        .clicked()
-                        && !busy
-                    {
-                        acts.later(Core::save_role);
-                    }
-                    if !everyone
-                        && Button::danger(t!("modal.delete_role_btn"))
-                            .show(ui)
-                            .clicked()
-                    {
-                        acts.later(move |c| {
-                            c.call(
-                                Req::delete(format!("/roles/{rid}")),
-                                Then::RoleDeleted,
-                                ErrTo::Toast,
-                            )
-                        });
-                    }
-                });
-            });
-        });
-    }
-    if s.can(P_BAN) {
-        widgets::divider(ui);
-        widgets::h3(ui, t!("modal.bans_title"));
-        ui.add_space(6.0);
-        if s.bans.is_empty() {
-            widgets::sub(ui, t!("modal.no_bans"));
-        }
-        for u in &s.bans {
-            ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = 12.0;
-                widgets::avatar(ui, core, u, 30.0, false, BG2);
-                ui.vertical(|ui| {
-                    ui.spacing_mut().item_spacing.y = 0.0;
-                    ui.label(
-                        egui::RichText::new(u.name())
-                            .font(theme::bold(14.0))
-                            .color(TEXT),
-                    );
-                    ui.label(
-                        egui::RichText::new(widgets::handle(u))
-                            .size(13.0)
-                            .color(MUTED),
-                    );
-                });
-                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    if Button::ghost(t!("modal.remove_ban_btn"))
-                        .small()
-                        .show(ui)
-                        .clicked()
-                    {
-                        let uid = u.id;
-                        acts.later(move |c| {
-                            c.call(
-                                Req::delete(format!("/servers/{sid}/bans/{uid}")),
-                                Then::Nothing,
-                                ErrTo::Toast,
-                            )
-                        });
-                    }
-                });
-            });
-            ui.add_space(6.0);
-        }
-    }
-    let owner = s.owner_id == core.me_id();
-    ui.add_space(18.0);
-    ui.horizontal(|ui| {
-        if owner && Button::danger(t!("modal.delete_server")).show(ui).clicked() {
-            acts.later(move |c| {
-                c.confirm(
-                    t!("modal.delete_server"),
-                    t!("modal.delete_server_body"),
-                    t!("modal.delete_server"),
-                    Action::DeleteServer(sid),
-                )
-            });
-        }
-        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            if Button::ghost(t!("common.close")).show(ui).clicked() {
-                acts.later(Core::close_modal);
-            }
-        });
-    });
-}
-
 // ---------------------------------------------------------------- people
 
 fn profile(ui: &mut Ui, core: &Core, uid: i64, acts: &mut Acts) {
@@ -1121,7 +840,7 @@ fn profile(ui: &mut Ui, core: &Core, uid: i64, acts: &mut Acts) {
     let me = uid == core.me_id();
     let friend = core.friends.iter().any(|f| f.user.id == uid);
     ui.vertical_centered(|ui| {
-        widgets::avatar(ui, core, &u, 84.0, true, BG2);
+        widgets::avatar(ui, core, &u, 84.0, true, BG2());
         ui.add_space(8.0);
         widgets::h3(ui, u.name());
         ui.label(
@@ -1130,7 +849,7 @@ fn profile(ui: &mut Ui, core: &Core, uid: i64, acts: &mut Acts) {
                 widgets::handle(&u),
                 u.status.public().label()
             ))
-            .color(MUTED),
+            .color(MUTED()),
         );
         let roles: Vec<&Role> = match (s, member) {
             (Some(s), Some(m)) => s.roles.iter().filter(|r| m.roles.contains(&r.id)).collect(),
@@ -1210,7 +929,7 @@ fn profile(ui: &mut Ui, core: &Core, uid: i64, acts: &mut Acts) {
         ui.label(
             egui::RichText::new(t!("modal.roles_title"))
                 .font(theme::bold(14.0))
-                .color(TEXT),
+                .color(TEXT()),
         );
         ui.add_space(4.0);
         for r in other_roles {
@@ -1289,292 +1008,6 @@ fn profile(ui: &mut Ui, core: &Core, uid: i64, acts: &mut Acts) {
     }
 }
 
-fn settings(ui: &mut Ui, core: &Core, display_name: &mut String, acts: &mut Acts) {
-    let Some(me) = core.me.clone() else { return };
-    widgets::h3(ui, t!("settings.title"));
-    widgets::sub(ui, &widgets::handle(&me));
-    ui.add_space(12.0);
-    ui.horizontal(|ui| {
-        ui.spacing_mut().item_spacing.x = 16.0;
-        widgets::avatar(ui, core, &me, 64.0, false, BG2);
-        ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = 8.0;
-            if Button::ghost(t!("settings.change_photo"))
-                .small()
-                .show(ui)
-                .clicked()
-            {
-                acts.later(|c| c.pick_files(Pick::Avatar));
-            }
-            if me.avatar.is_some()
-                && Button::ghost(t!("settings.remove"))
-                    .small()
-                    .show(ui)
-                    .clicked()
-            {
-                acts.later(|c| {
-                    c.call(
-                        Req::patch("/me").with(json!({ "avatar": null })),
-                        Then::Nothing,
-                        ErrTo::Toast,
-                    )
-                });
-            }
-        });
-    });
-    ui.add_space(14.0);
-    let r = widgets::field(ui, t!("settings.display_name"), display_name, 64, false);
-    widgets::error_line(ui, core.errors.get(&FormId::Profile));
-    let busy = core.busy.contains(&FormId::Profile);
-    if (Button::primary(t!("settings.save_name"))
-        .small()
-        .enabled(!busy)
-        .show(ui)
-        .clicked()
-        || submitted(ui, &r))
-        && !busy
-    {
-        let n = display_name.trim().to_owned();
-        acts.later(move |c| {
-            c.call(
-                Req::patch("/me").with(json!({ "displayName": n })),
-                Then::Toast(t!("settings.name_saved").into()),
-                ErrTo::Form(FormId::Profile),
-            )
-        });
-    }
-    ui.add_space(14.0);
-    let mut status = Status::PICKABLE
-        .iter()
-        .position(|s| *s == me.status)
-        .unwrap_or(0);
-    let labels: Vec<&str> = Status::PICKABLE.iter().map(|s| s.label()).collect();
-    if select(ui, "status", t!("settings.status"), &mut status, &labels) {
-        let picked = Status::PICKABLE[status];
-        acts.later(move |c| c.set_status(picked));
-    }
-    ui.add_space(14.0);
-    let mut lang = crate::lang::Lang::ALL
-        .iter()
-        .position(|l| *l == crate::lang::current())
-        .unwrap_or(0);
-    let langs: Vec<&str> = crate::lang::Lang::ALL.iter().map(|l| l.label()).collect();
-    if select(ui, "language", t!("settings.language"), &mut lang, &langs) {
-        let picked = crate::lang::Lang::ALL[lang];
-        acts.later(move |c| c.set_language(picked));
-    }
-
-    widgets::divider(ui);
-    widgets::h3(ui, t!("settings.voice_video"));
-    ui.add_space(6.0);
-    let devices = core.audio_devices.as_ref();
-    if let Some(choice) = device_select(
-        ui,
-        "input-device",
-        t!("settings.microphone"),
-        core.input_device(),
-        devices.map(|d| d.inputs.as_slice()),
-    ) {
-        acts.later(move |c| c.set_input_device(choice));
-    }
-    if let Some(choice) = device_select(
-        ui,
-        "output-device",
-        t!("settings.audio_output"),
-        core.output_device(),
-        devices.map(|d| d.outputs.as_slice()),
-    ) {
-        acts.later(move |c| c.set_output_device(choice));
-    }
-    widgets::sub(ui, t!("settings.output_hint"));
-    ui.add_space(10.0);
-    let mut noise = Noise::ALL
-        .iter()
-        .position(|n| *n == core.noise())
-        .unwrap_or(0);
-    let labels: Vec<&str> = Noise::ALL.iter().map(|n| n.label()).collect();
-    if select(ui, "noise", t!("settings.noise"), &mut noise, &labels) {
-        let picked = Noise::ALL[noise];
-        acts.later(move |c| c.set_noise(picked));
-    }
-    widgets::sub(
-        ui,
-        match Noise::ALL[noise] {
-            Noise::Ia => t!("settings.noise_ia"),
-            Noise::Padrao => t!("settings.noise_padrao"),
-            Noise::Desligada => t!("settings.noise_desligada"),
-        },
-    );
-    ui.add_space(10.0);
-    let on = core.sounds.enabled_count();
-    egui::CollapsingHeader::new(
-        egui::RichText::new(tf!(
-            "settings.sounds_header",
-            on = on,
-            total = Cue::ALL.len()
-        ))
-        .font(theme::bold(14.0)),
-    )
-    .id_salt("sounds")
-    .show(ui, |ui| {
-        for cue in Cue::ALL {
-            ui.horizontal(|ui| {
-                let label = tf!("settings.hear", name = cue.label());
-                if widgets::icon_button_sized(
-                    ui,
-                    crate::icons::Icon::Play,
-                    28.0,
-                    11.0,
-                    widgets::Ib::Normal,
-                    &label,
-                )
-                .clicked()
-                {
-                    core.sounds.play_always(cue);
-                }
-                ui.label(egui::RichText::new(cue.label()).color(TEXT));
-                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    let mut enabled = core.sounds.enabled(cue);
-                    if ui.checkbox(&mut enabled, "").changed() {
-                        core.sounds.set_enabled(cue, enabled);
-                        if enabled {
-                            core.sounds.play_always(cue);
-                        }
-                        acts.later(Core::save_prefs);
-                    }
-                });
-            });
-        }
-    });
-
-    widgets::divider(ui);
-    widgets::h3(ui, t!("settings.privacy"));
-    ui.add_space(6.0);
-    let mut hide_ip = core.prefs.hide_ip;
-    if widgets::check_row(
-        ui,
-        t!("settings.hide_ip"),
-        t!("settings.hide_ip_hint"),
-        &mut hide_ip,
-        true,
-    ) {
-        acts.later(move |c| c.set_hide_ip(hide_ip));
-    }
-    let mut typing = !core.prefs.no_typing;
-    if widgets::check_row(
-        ui,
-        t!("settings.show_typing"),
-        t!("settings.show_typing_hint"),
-        &mut typing,
-        true,
-    ) {
-        acts.later(move |c| c.set_send_typing(typing));
-    }
-    let mut tor = core.prefs.tor;
-    if widgets::check_row(
-        ui,
-        t!("settings.tor"),
-        t!("settings.tor_hint"),
-        &mut tor,
-        true,
-    ) {
-        acts.later(move |c| c.set_tor(tor));
-    }
-    if let Some(status) = crate::tor::status() {
-        widgets::sub(ui, &tor_text(&status));
-    }
-
-    widgets::divider(ui);
-    widgets::h3(ui, t!("settings.app"));
-    ui.add_space(6.0);
-    let s = core.shell.settings();
-    let toggles = [
-        (
-            "notifications",
-            t!("settings.notifications"),
-            t!("settings.notifications_hint"),
-            s.notifications,
-        ),
-        (
-            "minimizeToTray",
-            t!("settings.minimize_tray"),
-            t!("settings.minimize_tray_hint"),
-            s.minimize_to_tray,
-        ),
-        (
-            "openOnStartup",
-            t!("settings.startup"),
-            t!("settings.startup_hint"),
-            s.open_on_startup,
-        ),
-        (
-            "startMinimized",
-            t!("settings.start_min"),
-            t!("settings.start_min_hint"),
-            s.start_minimized,
-        ),
-    ];
-    for (key, label, hint, value) in toggles {
-        let mut v = value;
-        if widgets::check_row(ui, label, hint, &mut v, true) {
-            core.shell.set_flag(key, v);
-        }
-    }
-    ui.add_space(10.0);
-    ui.horizontal(|ui| {
-        ui.label(
-            egui::RichText::new(tf!(
-                "settings.version",
-                version = babutela_buildinfo::VERSION
-            ))
-            .color(MUTED),
-        );
-        if widgets::link(ui, t!("settings.check_updates")).clicked() {
-            acts.later(|c| c.check_update(crate::core::Check::Button));
-        }
-        ui.label(egui::RichText::new("·").color(MUTED));
-        if widgets::link(ui, t!("settings.licenses")).clicked() {
-            acts.later(|c| c.open_modal(Modal::Licenses));
-        }
-    });
-
-    widgets::divider(ui);
-    widgets::h3(ui, t!("settings.account"));
-    ui.add_space(6.0);
-    let with = if core.account.email.is_empty() {
-        t!("settings.account_google").to_owned()
-    } else {
-        tf!("settings.account_google_with", email = core.account.email)
-    };
-    widgets::sub(ui, &with);
-    ui.add_space(14.0);
-    if Button::danger(t!("settings.delete_account"))
-        .small()
-        .show(ui)
-        .clicked()
-    {
-        acts.later(|c| {
-            c.confirm(
-                t!("settings.delete_account"),
-                t!("settings.delete_account_confirm"),
-                t!("settings.delete_forever"),
-                Action::DeleteAccount,
-            )
-        });
-    }
-    ui.add_space(18.0);
-    ui.horizontal(|ui| {
-        if Button::danger(t!("settings.signout")).show(ui).clicked() {
-            acts.later(|c| c.logout(false));
-        }
-        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            if Button::ghost(t!("common.close")).show(ui).clicked() {
-                acts.later(Core::close_modal);
-            }
-        });
-    });
-}
-
 // ---------------------------------------------------------------- moderation
 
 fn report(
@@ -1600,7 +1033,7 @@ fn report(
     ui.label(
         egui::RichText::new(t!("modal.details_optional"))
             .font(theme::bold(12.0))
-            .color(MUTED)
+            .color(MUTED())
             .extra_letter_spacing(0.5),
     );
     ui.add_space(2.0);
@@ -1609,7 +1042,7 @@ fn report(
             .desired_rows(3)
             .desired_width(f32::INFINITY)
             .char_limit(2000)
-            .background_color(BG0)
+            .background_color(BG0())
             .margin(Margin::symmetric(12, 9)),
     );
     widgets::error_line(ui, core.errors.get(&FormId::Report));
@@ -1637,12 +1070,14 @@ fn report(
     });
 }
 
-fn reports(ui: &mut Ui, core: &Core, sid: i64, acts: &mut Acts) {
+pub(super) fn reports(ui: &mut Ui, core: &Core, sid: i64, acts: &mut Acts, in_page: bool) {
     let Some(s) = core.server(sid) else {
         acts.later(Core::close_modal);
         return;
     };
-    widgets::h3(ui, t!("modal.reports_title"));
+    if !in_page {
+        widgets::h3(ui, t!("modal.reports_title"));
+    }
     let n = s.reports.len();
     let count = match n {
         0 => t!("modal.reports_none_pending").to_owned(),
@@ -1654,8 +1089,8 @@ fn reports(ui: &mut Ui, core: &Core, sid: i64, acts: &mut Acts) {
     let can_ban = s.can(P_BAN);
     for r in &s.reports {
         Frame::new()
-            .fill(BG1)
-            .stroke(Stroke::new(1.0, BG4))
+            .fill(BG1())
+            .stroke(Stroke::new(1.0, BG4()))
             .corner_radius(CornerRadius::same(RADIUS))
             .inner_margin(Margin::same(12))
             .show(ui, |ui| {
@@ -1663,13 +1098,13 @@ fn reports(ui: &mut Ui, core: &Core, sid: i64, acts: &mut Acts) {
                 let author = r.message.author.clone().unwrap_or_else(|| User::unknown(0));
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 12.0;
-                    widgets::avatar(ui, core, &author, 30.0, false, BG1);
+                    widgets::avatar(ui, core, &author, 30.0, false, BG1());
                     ui.vertical(|ui| {
                         ui.spacing_mut().item_spacing.y = 0.0;
                         ui.label(
                             egui::RichText::new(author.name())
                                 .font(theme::bold(14.0))
-                                .color(TEXT),
+                                .color(TEXT()),
                         );
                         let place = r.channel.as_deref().unwrap_or("?");
                         ui.label(
@@ -1679,7 +1114,7 @@ fn reports(ui: &mut Ui, core: &Core, sid: i64, acts: &mut Acts) {
                                 time = super::chat::fmt_time(r.message.created)
                             ))
                             .size(13.0)
-                            .color(MUTED),
+                            .color(MUTED()),
                         );
                     });
                 });
@@ -1691,7 +1126,7 @@ fn reports(ui: &mut Ui, core: &Core, sid: i64, acts: &mut Acts) {
                             ui.label(
                                 egui::RichText::new(t!("modal.attachment"))
                                     .italics()
-                                    .color(MUTED),
+                                    .color(MUTED()),
                             );
                         } else {
                             let pieces =
@@ -1710,7 +1145,7 @@ fn reports(ui: &mut Ui, core: &Core, sid: i64, acts: &mut Acts) {
                 ui.painter().rect_filled(
                     Rect::from_min_size(qr.min, vec2(3.0, qr.height())),
                     CornerRadius::ZERO,
-                    BG4,
+                    BG4(),
                 );
                 ui.add_space(6.0);
                 let reporter = r
@@ -1719,15 +1154,15 @@ fn reports(ui: &mut Ui, core: &Core, sid: i64, acts: &mut Acts) {
                     .map_or(t!("modal.unknown"), |u| u.name());
                 ui.horizontal_wrapped(|ui| {
                     ui.spacing_mut().item_spacing.x = 4.0;
-                    ui.label(egui::RichText::new(t!("modal.reason_colon")).color(MUTED));
+                    ui.label(egui::RichText::new(t!("modal.reason_colon")).color(MUTED()));
                     ui.label(
                         egui::RichText::new(reason_label(&r.reason))
                             .font(theme::bold(14.0))
-                            .color(MUTED),
+                            .color(MUTED()),
                     );
                     ui.label(
                         egui::RichText::new(tf!("modal.reported_by", reporter = reporter))
-                            .color(MUTED),
+                            .color(MUTED()),
                     );
                 });
                 let (rid, mid, author_id) = (r.id, r.message.id, author.id);
@@ -1783,20 +1218,24 @@ fn reports(ui: &mut Ui, core: &Core, sid: i64, acts: &mut Acts) {
             });
         ui.add_space(10.0);
     }
-    foot(ui, |ui| {
-        if Button::ghost(t!("common.close")).show(ui).clicked() {
-            acts.later(Core::close_modal);
-        }
-    });
+    if !in_page {
+        foot(ui, |ui| {
+            if Button::ghost(t!("common.close")).show(ui).clicked() {
+                acts.later(Core::close_modal);
+            }
+        });
+    }
 }
 
 /// Who asked to join a private server, to let in or turn down.
-fn requests(ui: &mut Ui, core: &Core, sid: i64, acts: &mut Acts) {
+pub(super) fn requests(ui: &mut Ui, core: &Core, sid: i64, acts: &mut Acts, in_page: bool) {
     let Some(s) = core.server(sid) else {
         acts.later(Core::close_modal);
         return;
     };
-    widgets::h3(ui, t!("modal.join_requests_title"));
+    if !in_page {
+        widgets::h3(ui, t!("modal.join_requests_title"));
+    }
     let count = match s.requests.len() {
         0 => t!("modal.requests_none_waiting").to_owned(),
         1 => t!("modal.requests_one_waiting").to_owned(),
@@ -1817,12 +1256,12 @@ fn requests(ui: &mut Ui, core: &Core, sid: i64, acts: &mut Acts) {
     for r in &s.requests {
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 12.0;
-            widgets::avatar(ui, core, &r.user, 30.0, false, BG2);
+            widgets::avatar(ui, core, &r.user, 30.0, false, BG2());
             ui.vertical(|ui| {
                 // Room left for the two buttons.
                 ui.set_max_width((ui.available_width() - 190.0).max(80.0));
                 ui.spacing_mut().item_spacing.y = 0.0;
-                widgets::ellipsis(ui, r.user.name(), theme::bold(14.0), TEXT);
+                widgets::ellipsis(ui, r.user.name(), theme::bold(14.0), TEXT());
                 ui.label(
                     egui::RichText::new(format!(
                         "{} · {}",
@@ -1830,7 +1269,7 @@ fn requests(ui: &mut Ui, core: &Core, sid: i64, acts: &mut Acts) {
                         super::chat::fmt_time(r.created)
                     ))
                     .size(13.0)
-                    .color(MUTED),
+                    .color(MUTED()),
                 );
             });
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -1854,11 +1293,13 @@ fn requests(ui: &mut Ui, core: &Core, sid: i64, acts: &mut Acts) {
         });
         ui.add_space(6.0);
     }
-    foot(ui, |ui| {
-        if Button::ghost(t!("common.close")).show(ui).clicked() {
-            acts.later(Core::close_modal);
-        }
-    });
+    if !in_page {
+        foot(ui, |ui| {
+            if Button::ghost(t!("common.close")).show(ui).clicked() {
+                acts.later(Core::close_modal);
+            }
+        });
+    }
 }
 
 // ---------------------------------------------------------------- sharing
@@ -1971,11 +1412,11 @@ fn share(
         ui.horizontal(|ui| {
             if loading {
                 ui.add(egui::Spinner::new().size(16.0));
-                ui.label(egui::RichText::new(t!("modal.searching")).color(MUTED));
+                ui.label(egui::RichText::new(t!("modal.searching")).color(MUTED()));
             } else if windows {
-                ui.label(egui::RichText::new(t!("modal.no_windows")).color(MUTED));
+                ui.label(egui::RichText::new(t!("modal.no_windows")).color(MUTED()));
             } else {
-                ui.label(egui::RichText::new(t!("modal.no_screens")).color(MUTED));
+                ui.label(egui::RichText::new(t!("modal.no_screens")).color(MUTED()));
             }
         });
     }
@@ -1997,7 +1438,7 @@ fn share(
             ui.label(
                 egui::RichText::new(t!("modal.searching_more"))
                     .font(theme::small())
-                    .color(FAINT),
+                    .color(FAINT()),
             );
         });
     }
@@ -2021,12 +1462,12 @@ fn share(
 /// The picker's presentation tab: a .pptx or a PDF, drawn on this PC and
 /// sent to everyone as pictures (slides/).
 fn present(ui: &mut Ui, core: &Core, acts: &mut Acts) {
-    ui.label(egui::RichText::new(t!("modal.present_body1")).color(TEXT));
+    ui.label(egui::RichText::new(t!("modal.present_body1")).color(TEXT()));
     ui.add_space(8.0);
     ui.label(
         egui::RichText::new(t!("modal.present_body2"))
             .font(theme::small())
-            .color(MUTED),
+            .color(MUTED()),
     );
     ui.add_space(14.0);
     let presenting = core.voice.slides().mine();
@@ -2034,7 +1475,7 @@ fn present(ui: &mut Ui, core: &Core, acts: &mut Acts) {
         ui.label(
             egui::RichText::new(tf!("modal.presenting_file", name = mine.name))
                 .font(theme::bold(13.0))
-                .color(ACCENT),
+                .color(ACCENT()),
         );
         ui.add_space(8.0);
     }
@@ -2068,9 +1509,9 @@ fn share_card(ui: &mut Ui, item: &crate::core::ShareItem, active: bool) -> egui:
     let (rect, resp) = ui.allocate_exact_size(CARD, Sense::click());
     let resp = resp.on_hover_cursor(CursorIcon::PointingHand);
     let painter = ui.painter_at(rect);
-    let fill = if resp.hovered() { BG4 } else { BG3 };
+    let fill = if resp.hovered() { BG4() } else { BG3() };
     let stroke = if active {
-        Stroke::new(2.0, ACCENT)
+        Stroke::new(2.0, ACCENT())
     } else {
         Stroke::NONE
     };
@@ -2082,7 +1523,7 @@ fn share_card(ui: &mut Ui, item: &crate::core::ShareItem, active: bool) -> egui:
         egui::StrokeKind::Inside,
     );
     let pic = Rect::from_min_size(rect.min + vec2(12.0, 12.0), THUMB);
-    painter.rect_filled(pic, CornerRadius::same(RADIUS_SM), BG0);
+    painter.rect_filled(pic, CornerRadius::same(RADIUS_SM), BG0());
     match &item.thumb {
         Some(tex) => {
             // Fitted inside the box, keeping the picture's shape.
@@ -2103,7 +1544,7 @@ fn share_card(ui: &mut Ui, item: &crate::core::ShareItem, active: bool) -> egui:
                 Icon::Monitor
             };
             let r = Rect::from_center_size(pic.center(), vec2(40.0, 40.0));
-            icon.image(40.0, FAINT).paint_at(ui, r);
+            icon.image(40.0, FAINT()).paint_at(ui, r);
         }
     }
     let text = Rect::from_min_max(
@@ -2117,8 +1558,8 @@ fn share_card(ui: &mut Ui, item: &crate::core::ShareItem, active: bool) -> egui:
             .layout(Layout::top_down(Align::Min)),
     );
     lines.spacing_mut().item_spacing.y = 2.0;
-    widgets::ellipsis(&mut lines, &item.title, theme::bold(13.0), TEXT);
-    widgets::ellipsis(&mut lines, &item.detail, theme::small(), MUTED);
+    widgets::ellipsis(&mut lines, &item.title, theme::bold(13.0), TEXT());
+    widgets::ellipsis(&mut lines, &item.detail, theme::small(), MUTED());
     resp
 }
 
@@ -2137,7 +1578,9 @@ pub fn pop(ctx: &egui::Context, core: &mut Core, acts: &mut Acts) {
     }
     let screen = ctx.content_rect();
     let (w, h) = match p.kind {
-        PopKind::ServerMenu => (222.0, 7.0 * 36.0 + 12.0),
+        PopKind::ServerMenu => server_menu_size(core, p.anchor),
+        PopKind::ChannelMenu(cid) => (CHANNEL_MENU_W + 12.0, channel_menu_height(core, cid)),
+        PopKind::RailMenu(_) => (RAIL_MENU_W + 12.0, rail_menu_height()),
         PopKind::React(_) | PopKind::Emoji => (EMOJI_W + 12.0, EMOJI_H + 12.0),
         PopKind::Sticker => (STICKER_W + 12.0, STICKER_H + 12.0),
         PopKind::Person(uid) => (PERSON_W + 12.0, person_height(core, uid) + 12.0),
@@ -2162,8 +1605,8 @@ pub fn pop(ctx: &egui::Context, core: &mut Core, acts: &mut Acts) {
         .fixed_pos(pos2(x, y))
         .show(ctx, |ui| {
             Frame::new()
-                .fill(BG0)
-                .stroke(Stroke::new(1.0, BG4))
+                .fill(BG0())
+                .stroke(Stroke::new(1.0, BG4()))
                 .corner_radius(CornerRadius::same(RADIUS))
                 .inner_margin(Margin::same(6))
                 .shadow(egui::epaint::Shadow {
@@ -2173,7 +1616,9 @@ pub fn pop(ctx: &egui::Context, core: &mut Core, acts: &mut Acts) {
                     color: Color32::from_black_alpha(0xaa),
                 })
                 .show(ui, |ui| match p.kind {
-                    PopKind::ServerMenu => server_menu(ui, core, acts),
+                    PopKind::ServerMenu => server_menu(ui, core, w - 12.0, acts),
+                    PopKind::RailMenu(sid) => rail_menu(ui, core, sid, acts),
+                    PopKind::ChannelMenu(cid) => channel_menu(ui, core, cid, acts),
                     PopKind::React(mid) => {
                         emoji_picker(ui, core, acts, move |c, e| c.react(mid, e))
                     }
@@ -2238,14 +1683,14 @@ fn person_menu(ui: &mut Ui, core: &Core, uid: i64, acts: &mut Acts) {
     let (rect, _) = ui.allocate_exact_size(vec2(PERSON_W, PERSON_TITLE_H), Sense::hover());
     let name = core.user(uid).name().to_owned();
     let galley = ui.painter().layout_job({
-        let mut job = egui::text::LayoutJob::simple_singleline(name, theme::bold(13.5), TEXT);
+        let mut job = egui::text::LayoutJob::simple_singleline(name, theme::bold(13.5), TEXT());
         job.wrap = egui::text::TextWrapping::truncate_at_width(PERSON_W - 20.0);
         job
     });
     ui.painter().galley(
         pos2(rect.left() + 10.0, rect.center().y - galley.size().y / 2.0),
         galley,
-        TEXT,
+        TEXT(),
     );
     let set = move |acts: &mut Acts, audio: crate::prefs::PersonAudio, keep: bool| {
         acts.later(move |c| c.set_person_audio(uid, audio, keep));
@@ -2275,7 +1720,7 @@ fn person_menu(ui: &mut Ui, core: &Core, uid: i64, acts: &mut Acts) {
         ui.add_space(PERSON_GAP);
         let (line, _) = ui.allocate_exact_size(vec2(PERSON_W, 1.0), Sense::hover());
         ui.painter()
-            .hline(line.x_range(), line.center().y, Stroke::new(1.0, BG4));
+            .hline(line.x_range(), line.center().y, Stroke::new(1.0, BG4()));
         if menu_check(ui, t!("modal.mute_stream"), audio.screen_muted) {
             set(
                 acts,
@@ -2314,9 +1759,9 @@ pub(super) fn menu_check(ui: &mut Ui, text: &str, on: bool) -> bool {
     let hovered = resp.hovered();
     if hovered {
         ui.painter()
-            .rect_filled(rect, CornerRadius::same(RADIUS_SM), ACCENT_2);
+            .rect_filled(rect, CornerRadius::same(RADIUS_SM), ACCENT_2());
     }
-    let fg = if hovered { Color32::WHITE } else { TEXT };
+    let fg = if hovered { Color32::WHITE } else { TEXT() };
     ui.painter().text(
         pos2(rect.left() + 10.0, rect.center().y),
         egui::Align2::LEFT_CENTER,
@@ -2329,9 +1774,9 @@ pub(super) fn menu_check(ui: &mut Ui, text: &str, on: bool) -> bool {
         ui.painter().rect_filled(
             tick,
             CornerRadius::same(4),
-            if hovered { Color32::WHITE } else { ACCENT },
+            if hovered { Color32::WHITE } else { ACCENT() },
         );
-        let mark = if hovered { ACCENT_2 } else { Color32::WHITE };
+        let mark = if hovered { ACCENT_2() } else { Color32::WHITE };
         let stroke = Stroke::new(2.0, mark);
         let (a, b, c) = (
             pos2(tick.left() + 3.5, tick.center().y),
@@ -2344,7 +1789,7 @@ pub(super) fn menu_check(ui: &mut Ui, text: &str, on: bool) -> bool {
         ui.painter().rect_stroke(
             tick,
             CornerRadius::same(4),
-            Stroke::new(1.5, if hovered { Color32::WHITE } else { MUTED }),
+            Stroke::new(1.5, if hovered { Color32::WHITE } else { MUTED() }),
             egui::StrokeKind::Inside,
         );
     }
@@ -2377,7 +1822,7 @@ pub(super) fn slider(
         egui::Align2::LEFT_CENTER,
         label,
         theme::small(),
-        MUTED,
+        MUTED(),
     );
     let shown = if muted { 0.0 } else { value };
     ui.painter().text(
@@ -2385,33 +1830,33 @@ pub(super) fn slider(
         egui::Align2::RIGHT_CENTER,
         format!("{:.0} %", shown * 100.0),
         theme::small(),
-        if muted { DANGER } else { TEXT },
+        if muted { DANGER } else { TEXT() },
     );
     let (rect, resp) =
         ui.allocate_exact_size(vec2(width, PERSON_SLIDER_H), Sense::click_and_drag());
     let resp = resp.on_hover_cursor(CursorIcon::PointingHand);
     let track = Rect::from_center_size(rect.center(), vec2(width - 28.0, 4.0));
     let painter = ui.painter();
-    painter.rect_filled(track, CornerRadius::same(2), BG4);
+    painter.rect_filled(track, CornerRadius::same(2), BG4());
     let fraction = (shown / max).clamp(0.0, 1.0);
     let knob = pos2(track.left() + track.width() * fraction, track.center().y);
     painter.rect_filled(
         Rect::from_min_max(track.min, pos2(knob.x, track.max.y)),
         CornerRadius::same(2),
-        if muted { FAINT } else { ACCENT },
+        if muted { FAINT() } else { ACCENT() },
     );
     let past_full = max > 1.0;
     if past_full {
         // Where 100 % is.
         let mark = track.left() + track.width() / max;
-        painter.vline(mark, track.y_range().expand(3.0), Stroke::new(1.0, MUTED));
+        painter.vline(mark, track.y_range().expand(3.0), Stroke::new(1.0, MUTED()));
     }
     let r = if resp.hovered() || resp.dragged() {
         7.0
     } else {
         6.0
     };
-    painter.circle_filled(knob, r, TEXT);
+    painter.circle_filled(knob, r, TEXT());
     if !(resp.clicked() || resp.dragged() || resp.drag_stopped()) {
         return None;
     }
@@ -2432,9 +1877,9 @@ pub(super) fn menu_item(ui: &mut Ui, text: &str, danger: bool) -> bool {
     let resp = resp.on_hover_cursor(CursorIcon::PointingHand);
     let (bg, fg) = match (resp.hovered(), danger) {
         (true, true) => (Some(DANGER), Color32::WHITE),
-        (true, false) => (Some(ACCENT_2), Color32::WHITE),
+        (true, false) => (Some(ACCENT_2()), Color32::WHITE),
         (false, true) => (None, DANGER),
-        (false, false) => (None, TEXT),
+        (false, false) => (None, TEXT()),
     };
     if let Some(bg) = bg {
         ui.painter()
@@ -2450,80 +1895,302 @@ pub(super) fn menu_item(ui: &mut Ui, text: &str, danger: bool) -> bool {
     resp.clicked()
 }
 
-fn server_menu(ui: &mut Ui, core: &Core, acts: &mut Acts) {
+/// A row of the drop-down menus (the server's, a channel's, a server's in
+/// the rail): its height, and the gap a line between groups takes.
+const DROP_ROW_H: f32 = 34.0;
+const DROP_LINE_H: f32 = 9.0;
+
+/// What a row of the server menu does.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Entry {
+    Invite,
+    Settings,
+    NewChannel,
+    NewCategory,
+    Notify,
+    Nick,
+    HideMuted,
+    Leave,
+}
+
+/// The server menu's rows in groups, as Discord's: what the owner (or
+/// whoever may manage something) sees has the settings and the new
+/// channels; the others leave instead.
+fn server_menu_groups(core: &Core, s: &Server) -> Vec<Vec<Entry>> {
+    let mut first = Vec::new();
+    if s.can(P_INVITE) {
+        first.push(Entry::Invite);
+    }
+    if crate::core::ServerTab::ALL
+        .iter()
+        .any(|t| super::server_settings::shown(s, *t))
+    {
+        first.push(Entry::Settings);
+    }
+    if s.can(P_MANAGE_CHANNELS) {
+        first.push(Entry::NewChannel);
+        first.push(Entry::NewCategory);
+    }
+    let mut groups = vec![first, vec![Entry::Notify], vec![Entry::Nick, Entry::HideMuted]];
+    if s.owner_id != core.me_id() {
+        groups.push(vec![Entry::Leave]);
+    }
+    groups.retain(|g| !g.is_empty());
+    groups
+}
+
+/// How tall a drop-down menu of these groups is, its margins included.
+fn drop_height(groups: &[Vec<Entry>]) -> f32 {
+    let rows: usize = groups.iter().map(Vec::len).sum();
+    rows as f32 * DROP_ROW_H + groups.len().saturating_sub(1) as f32 * DROP_LINE_H + 12.0
+}
+
+/// How big the server menu is: as wide as the channel list under it.
+fn server_menu_size(core: &Core, anchor: Rect) -> (f32, f32) {
+    let w = anchor.width().max(264.0);
+    let Some(s) = core.current_server() else {
+        return (w, 60.0);
+    };
+    (w, drop_height(&server_menu_groups(core, s)))
+}
+
+/// The server menu, a list under the server's name.
+fn server_menu(ui: &mut Ui, core: &Core, width: f32, acts: &mut Acts) {
     let Some(s) = core.current_server() else {
         return;
     };
     let sid = s.id;
-    let mut any = false;
-    if s.can(P_INVITE) {
-        any = true;
-        if menu_item(ui, t!("modal.invite_title"), false) {
-            acts.later(Core::invite);
+    ui.set_width(width);
+    ui.spacing_mut().item_spacing.y = 0.0;
+    // What waits in the settings: reports and people asking to come in.
+    let waiting = if s.can(P_MANAGE_MESSAGES) {
+        s.reports.len()
+    } else {
+        0
+    } + if s.can(P_KICK) { s.requests.len() } else { 0 };
+    for (i, group) in server_menu_groups(core, s).into_iter().enumerate() {
+        if i > 0 {
+            drop_line(ui);
+        }
+        for e in group {
+            let (icon, text, danger, trail) = match e {
+                Entry::Invite => (Icon::UserPlus, t!("server.invite"), false, Trail::None),
+                Entry::Settings => (
+                    Icon::Gear,
+                    t!("server.settings"),
+                    false,
+                    Trail::Count(waiting),
+                ),
+                Entry::NewChannel => (Icon::Plus, t!("modal.create_channel"), false, Trail::None),
+                Entry::NewCategory => (
+                    Icon::FolderPlus,
+                    t!("server.create_category"),
+                    false,
+                    Trail::None,
+                ),
+                Entry::Notify => (Icon::Bell, t!("server.notify_settings"), false, Trail::None),
+                Entry::Nick => (Icon::Edit, t!("server.edit_profile"), false, Trail::None),
+                Entry::HideMuted => (
+                    Icon::EyeOff,
+                    t!("server.hide_muted"),
+                    false,
+                    Trail::Check(core.hides_muted(sid)),
+                ),
+                Entry::Leave => (Icon::LogOut, t!("modal.leave_server_title"), true, Trail::None),
+            };
+            if !drop_row(ui, Some(icon), text, danger, trail) {
+                continue;
+            }
+            match e {
+                Entry::Invite => acts.later(Core::invite),
+                Entry::Settings => acts.later(move |c| c.open_server_settings(sid)),
+                Entry::NewChannel => acts.later(move |c| c.new_channel(sid, false)),
+                Entry::NewCategory => acts.later(move |c| c.new_channel(sid, true)),
+                Entry::Notify => acts.later(move |c| c.open_notify_settings(sid)),
+                Entry::Nick => acts.later(move |c| c.open_nick(sid)),
+                Entry::HideMuted => acts.later(move |c| c.toggle_hide_muted(sid)),
+                Entry::Leave => {
+                    let back = if s.private {
+                        t!("modal.leave_server_body_private")
+                    } else {
+                        t!("modal.leave_server_body_public")
+                    };
+                    acts.later(move |c| {
+                        c.confirm(
+                            t!("modal.leave_server_title"),
+                            back,
+                            t!("modal.leave_btn"),
+                            Action::LeaveServer(sid),
+                        )
+                    });
+                }
+            }
         }
     }
-    if s.can(P_MANAGE_CHANNELS) {
-        any = true;
-        if menu_item(ui, t!("modal.create_channel"), false) {
+}
+
+/// What a drop-down row has at its right.
+#[derive(Clone, Copy)]
+enum Trail {
+    None,
+    Chevron,
+    Count(usize),
+    Check(bool),
+}
+
+/// The line between a drop-down menu's groups.
+fn drop_line(ui: &mut Ui) {
+    let (r, _) = ui.allocate_exact_size(vec2(ui.available_width(), DROP_LINE_H), Sense::hover());
+    ui.painter().hline(
+        r.x_range().shrink(6.0),
+        r.center().y,
+        Stroke::new(1.0, BG3()),
+    );
+}
+
+/// A row of a drop-down menu: an icon, the text, and what it has at its
+/// right. Returns whether it was clicked.
+fn drop_row(ui: &mut Ui, icon: Option<Icon>, text: &str, danger: bool, trail: Trail) -> bool {
+    let w = ui.available_width();
+    let (rect, resp) = ui.allocate_exact_size(vec2(w, DROP_ROW_H), Sense::click());
+    crate::smoke::target(|| format!("menu:{text}"), rect);
+    let resp = resp.on_hover_cursor(CursorIcon::PointingHand);
+    let hovered = resp.hovered();
+    if hovered {
+        ui.painter().rect_filled(
+            rect,
+            CornerRadius::same(RADIUS_SM),
+            if danger {
+                DANGER.gamma_multiply(0.18)
+            } else {
+                BG3()
+            },
+        );
+    }
+    let ink = if danger {
+        DANGER
+    } else if hovered {
+        TEXT()
+    } else {
+        TEXT().gamma_multiply(0.88)
+    };
+    let mut x = rect.left() + 10.0;
+    if let Some(icon) = icon {
+        icon.image(18.0, ink).paint_at(
+            ui,
+            Rect::from_center_size(pos2(x + 9.0, rect.center().y), vec2(18.0, 18.0)),
+        );
+        x += 28.0;
+    }
+    let right = rect.right() - 10.0;
+    let text_w = (right - x - 26.0).max(20.0);
+    let galley = ui.painter().layout_job({
+        let mut job =
+            egui::text::LayoutJob::simple_singleline(text.to_owned(), theme::body(), ink);
+        job.wrap = egui::text::TextWrapping::truncate_at_width(text_w);
+        job
+    });
+    ui.painter()
+        .galley(pos2(x, rect.center().y - galley.size().y / 2.0), galley, ink);
+    match trail {
+        Trail::None => {}
+        Trail::Chevron => {
+            Icon::Right.image(14.0, MUTED()).paint_at(
+                ui,
+                Rect::from_center_size(pos2(right - 6.0, rect.center().y), vec2(14.0, 14.0)),
+            );
+        }
+        Trail::Count(n) => {
+            if n > 0 {
+                widgets::badge_at(ui, pos2(right - 8.0, rect.center().y), n as u32, None);
+            }
+        }
+        Trail::Check(on) => {
+            let tick = Rect::from_center_size(pos2(right - 9.0, rect.center().y), vec2(18.0, 18.0));
+            if on {
+                ui.painter()
+                    .rect_filled(tick, CornerRadius::same(4), ACCENT());
+                let stroke = Stroke::new(2.0, ACCENT_INK());
+                let (a, b, c) = (
+                    pos2(tick.left() + 4.0, tick.center().y),
+                    pos2(tick.left() + 7.5, tick.bottom() - 4.5),
+                    pos2(tick.right() - 3.5, tick.top() + 4.5),
+                );
+                ui.painter().line_segment([a, b], stroke);
+                ui.painter().line_segment([b, c], stroke);
+            } else {
+                ui.painter().rect_stroke(
+                    tick,
+                    CornerRadius::same(4),
+                    Stroke::new(1.5, MUTED()),
+                    egui::StrokeKind::Inside,
+                );
+            }
+        }
+    }
+    resp.clicked()
+}
+
+const CHANNEL_MENU_W: f32 = 230.0;
+
+/// Whether I may edit channel `cid` of the server on screen.
+fn manages_channel(core: &Core, cid: i64) -> bool {
+    core.current_server()
+        .is_some_and(|s| s.can(P_MANAGE_CHANNELS) && s.channel(cid).is_some())
+}
+
+fn channel_menu_height(core: &Core, cid: i64) -> f32 {
+    let rows = if manages_channel(core, cid) { 3.0 } else { 2.0 };
+    rows * DROP_ROW_H + DROP_LINE_H * (rows - 1.0) + 12.0
+}
+
+/// A channel's own menu (a right click on it): read, silence, edit.
+fn channel_menu(ui: &mut Ui, core: &Core, cid: i64, acts: &mut Acts) {
+    ui.set_width(CHANNEL_MENU_W);
+    ui.spacing_mut().item_spacing.y = 0.0;
+    if drop_row(ui, None, t!("server.mark_read"), false, Trail::None) {
+        acts.later(move |c| {
+            c.pop = None;
+            c.mark_read(cid);
+        });
+    }
+    drop_line(ui);
+    let muted = core.channel_muted(cid);
+    if drop_row(ui, None, t!("server.mute_channel"), false, Trail::Check(muted)) {
+        acts.later(move |c| c.toggle_mute_channel(cid));
+    }
+    if manages_channel(core, cid) {
+        drop_line(ui);
+        if drop_row(ui, None, t!("channel.edit"), false, Trail::Chevron) {
             acts.later(move |c| {
-                c.open_modal(Modal::NewChannel {
-                    sid,
-                    kind: ChannelKind::Text,
-                    name: String::new(),
-                    category: String::new(),
-                    quick: false,
-                })
+                c.pop = None;
+                c.open_edit_channel(cid);
             });
         }
     }
-    if s.can(P_MANAGE_SERVER) || s.can(P_MANAGE_ROLES) || s.can(P_BAN) {
-        any = true;
-        if menu_item(ui, t!("modal.server_settings_title"), false) {
-            acts.later(move |c| c.open_server_settings(sid));
-        }
+}
+
+const RAIL_MENU_W: f32 = 230.0;
+
+fn rail_menu_height() -> f32 {
+    3.0 * DROP_ROW_H + DROP_LINE_H + 12.0
+}
+
+/// A server's menu in the rail (a right click on it): read, silence,
+/// notifications.
+fn rail_menu(ui: &mut Ui, core: &Core, sid: i64, acts: &mut Acts) {
+    ui.set_width(RAIL_MENU_W);
+    ui.spacing_mut().item_spacing.y = 0.0;
+    if drop_row(ui, None, t!("server.mark_read"), false, Trail::None) {
+        acts.later(move |c| c.mark_server_read(sid));
     }
-    if s.can(P_MANAGE_MESSAGES) {
-        any = true;
-        let label = if s.reports.is_empty() {
-            t!("modal.reports_title").to_owned()
-        } else {
-            tf!("modal.reports_count", n = s.reports.len())
-        };
-        if menu_item(ui, &label, false) {
-            acts.later(move |c| c.open_modal(Modal::Reports { sid }));
-        }
+    drop_line(ui);
+    let muted = core.server_muted(sid);
+    if drop_row(ui, None, t!("server.mute_server"), false, Trail::Check(muted)) {
+        acts.later(move |c| c.toggle_mute_server(sid));
     }
-    if s.can(P_KICK) && (s.private || !s.requests.is_empty()) {
-        any = true;
-        let label = if s.requests.is_empty() {
-            t!("modal.join_requests_title").to_owned()
-        } else {
-            tf!("modal.join_requests_count", n = s.requests.len())
-        };
-        if menu_item(ui, &label, false) {
-            acts.later(move |c| c.open_modal(Modal::Requests { sid }));
-        }
-    }
-    if s.owner_id != core.me_id() {
-        any = true;
-        let back = if s.private {
-            t!("modal.leave_server_body_private")
-        } else {
-            t!("modal.leave_server_body_public")
-        };
-        if menu_item(ui, t!("modal.leave_server_title"), true) {
-            acts.later(move |c| {
-                c.confirm(
-                    t!("modal.leave_server_title"),
-                    back,
-                    t!("modal.leave_btn"),
-                    Action::LeaveServer(sid),
-                )
-            });
-        }
-    }
-    if !any && menu_item(ui, t!("modal.nothing_available"), false) {
-        acts.later(|c| c.pop = None);
+    if drop_row(ui, None, t!("server.notify_settings"), false, Trail::Chevron) {
+        acts.later(move |c| c.open_notify_settings(sid));
     }
 }
 
@@ -2558,7 +2225,7 @@ fn emoji_cell(ui: &Ui, rect: Rect, id: Id, text: &str, chosen: bool) -> egui::Re
         .interact(rect, id, Sense::click())
         .on_hover_cursor(CursorIcon::PointingHand);
     if resp.hovered() || chosen {
-        let fill = if resp.hovered() { BG3 } else { BG2 };
+        let fill = if resp.hovered() { BG3() } else { BG2() };
         ui.painter()
             .rect_filled(rect, CornerRadius::same(RADIUS_SM), fill);
     }
@@ -2567,7 +2234,7 @@ fn emoji_cell(ui: &Ui, rect: Rect, id: Id, text: &str, chosen: bool) -> egui::Re
         egui::Align2::CENTER_CENTER,
         text,
         egui::FontId::proportional(EMOJI_GLYPH),
-        TEXT,
+        TEXT(),
     );
     resp
 }
@@ -2625,11 +2292,11 @@ fn emoji_picker(
                 ui.add(
                     TextEdit::singleline(&mut core.emoji_query)
                         .char_limit(60)
-                        .hint_text(egui::RichText::new(t!("modal.search_emoji")).color(FAINT))
+                        .hint_text(egui::RichText::new(t!("modal.search_emoji")).color(FAINT()))
                         .desired_width(f32::INFINITY)
                         .font(theme::body())
                         .margin(Margin::symmetric(12, 9))
-                        .background_color(BG2),
+                        .background_color(BG2()),
                 )
             })
             .inner;
@@ -2637,7 +2304,7 @@ fn emoji_picker(
             ui.painter().rect_stroke(
                 edit.rect,
                 CornerRadius::same(RADIUS_MD),
-                Stroke::new(1.0, ACCENT),
+                Stroke::new(1.0, ACCENT()),
                 egui::StrokeKind::Inside,
             );
         }
@@ -2653,14 +2320,14 @@ fn emoji_picker(
         crate::smoke::target(|| "emoji-tons".into(), rect);
         if resp.hovered() || core.emoji_tones_open {
             ui.painter()
-                .rect_filled(rect, CornerRadius::same(RADIUS_SM), BG3);
+                .rect_filled(rect, CornerRadius::same(RADIUS_SM), BG3());
         }
         ui.painter().text(
             rect.center(),
             egui::Align2::CENTER_CENTER,
             toned(TONE_HAND, tone),
             egui::FontId::proportional(20.0),
-            TEXT,
+            TEXT(),
         );
         if resp.clicked() {
             acts.later(|c| c.emoji_tones_open = !c.emoji_tones_open);
@@ -2723,17 +2390,17 @@ fn emoji_picker(
                 .on_hover_text(tip);
             if on {
                 ui.painter()
-                    .rect_filled(rect, CornerRadius::same(RADIUS_SM), BG3);
+                    .rect_filled(rect, CornerRadius::same(RADIUS_SM), BG3());
             } else if resp.hovered() {
                 ui.painter()
-                    .rect_filled(rect, CornerRadius::same(RADIUS_SM), BG2);
+                    .rect_filled(rect, CornerRadius::same(RADIUS_SM), BG2());
             }
             ui.painter().text(
                 rect.center(),
                 egui::Align2::CENTER_CENTER,
                 text,
                 egui::FontId::proportional(size),
-                TEXT,
+                TEXT(),
             );
             (rect, resp)
         };
@@ -2755,7 +2422,7 @@ fn emoji_picker(
                 ui.painter().hline(
                     rect.x_range().shrink(6.0),
                     rect.bottom() - 1.0,
-                    Stroke::new(2.0, ACCENT),
+                    Stroke::new(2.0, ACCENT()),
                 );
             }
             crate::smoke::target(|| format!("emoji-aba:{label}"), rect);
@@ -2804,7 +2471,7 @@ fn emoji_picker(
             egui::Align2::LEFT_CENTER,
             t!("modal.tone_per_person_heading"),
             theme::bold(11.0),
-            FAINT,
+            FAINT(),
         );
         let mut back = ui.new_child(
             egui::UiBuilder::new()
@@ -2863,7 +2530,7 @@ fn emoji_picker(
             egui::Align2::LEFT_CENTER,
             t!("modal.no_skin_tone"),
             theme::small(),
-            MUTED,
+            MUTED(),
         );
         if resp.hovered() {
             hovered = Some(entry.text.clone());
@@ -2887,11 +2554,11 @@ fn emoji_picker(
         );
         middle.add_space(rect.height() / 2.0 - 24.0);
         if matches!(now, Now::Loading) && !searching {
-            middle.add(egui::Spinner::new().size(18.0).color(ACCENT));
+            middle.add(egui::Spinner::new().size(18.0).color(ACCENT()));
             middle.add_space(6.0);
         }
         middle.add(
-            egui::Label::new(egui::RichText::new(text).color(MUTED))
+            egui::Label::new(egui::RichText::new(text).color(MUTED()))
                 .halign(Align::Center)
                 .wrap(),
         );
@@ -2921,7 +2588,7 @@ fn emoji_picker(
                             egui::Align2::LEFT_CENTER,
                             s.label.to_uppercase(),
                             theme::bold(11.0),
-                            FAINT,
+                            FAINT(),
                         );
                     }
                     y += EMOJI_HEAD;
@@ -2984,7 +2651,7 @@ fn emoji_picker(
                     .as_ref()
                     .and_then(|c| c.name_of(e))
                     .unwrap_or_default();
-                widgets::ellipsis(ui, &name, theme::body(), TEXT);
+                widgets::ellipsis(ui, &name, theme::body(), TEXT());
             }
             (None, Now::Failed(_)) => {
                 ui.label(
@@ -3000,14 +2667,14 @@ fn emoji_picker(
                 ui.label(
                     egui::RichText::new(t!("modal.loading_emoji_list"))
                         .size(12.0)
-                        .color(FAINT),
+                        .color(FAINT()),
                 );
             }
             (None, Now::Ready(c)) => {
                 ui.label(
                     egui::RichText::new(tf!("modal.emoji_version", version = c.version))
                         .size(12.0)
-                        .color(FAINT),
+                        .color(FAINT()),
                 );
             }
         }
@@ -3058,17 +2725,17 @@ fn sticker_picker(ui: &mut Ui, core: &mut Core, acts: &mut Acts) {
     let edit = ui.add(
         TextEdit::singleline(&mut core.sticker_query)
             .char_limit(giphy::MAX_QUERY)
-            .hint_text(egui::RichText::new(t!("modal.search_stickers")).color(FAINT))
+            .hint_text(egui::RichText::new(t!("modal.search_stickers")).color(FAINT()))
             .desired_width(f32::INFINITY)
             .font(theme::body())
             .margin(Margin::symmetric(12, 9))
-            .background_color(BG2),
+            .background_color(BG2()),
     );
     if edit.has_focus() {
         ui.painter().rect_stroke(
             edit.rect,
             CornerRadius::same(RADIUS_MD),
-            Stroke::new(1.0, ACCENT),
+            Stroke::new(1.0, ACCENT()),
             egui::StrokeKind::Inside,
         );
     }
@@ -3152,7 +2819,7 @@ fn sticker_picker(ui: &mut Ui, core: &mut Core, acts: &mut Acts) {
         );
         middle.add_space(rect.height() / 2.0 - 24.0);
         middle.add(
-            egui::Label::new(egui::RichText::new(text).color(MUTED))
+            egui::Label::new(egui::RichText::new(text).color(MUTED()))
                 .halign(Align::Center)
                 .wrap(),
         );
@@ -3211,7 +2878,7 @@ fn sticker_picker(ui: &mut Ui, core: &mut Core, acts: &mut Acts) {
             ui.label(
                 egui::RichText::new(t!("modal.loading"))
                     .size(12.0)
-                    .color(FAINT),
+                    .color(FAINT()),
             );
         }
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -3230,7 +2897,7 @@ fn sticker_picker(ui: &mut Ui, core: &mut Core, acts: &mut Acts) {
                     ui.label(
                         egui::RichText::new("Powered by GIPHY")
                             .font(theme::bold(11.0))
-                            .color(MUTED),
+                            .color(MUTED()),
                     );
                 }
             }
@@ -3247,11 +2914,11 @@ fn sticker_tile(ui: &mut Ui, core: &Core, id: &str, cell: Rect, acts: &mut Acts)
         .on_hover_cursor(CursorIcon::PointingHand);
     if resp.hovered() {
         ui.painter()
-            .rect_filled(cell, CornerRadius::same(RADIUS_SM), BG3);
+            .rect_filled(cell, CornerRadius::same(RADIUS_SM), BG3());
     }
     let placeholder = |ui: &Ui, rect: Rect| {
         ui.painter()
-            .rect_filled(rect, CornerRadius::same(RADIUS_SM), BG1);
+            .rect_filled(rect, CornerRadius::same(RADIUS_SM), BG1());
     };
     match core.giphy.sticker(id) {
         Lookup::Ready(st) => {
@@ -3270,7 +2937,7 @@ fn sticker_tile(ui: &mut Ui, core: &Core, id: &str, cell: Rect, acts: &mut Acts)
                         egui::Align2::CENTER_CENTER,
                         t!("modal.unavailable"),
                         theme::tiny(),
-                        FAINT,
+                        FAINT(),
                     );
                 }
             }
@@ -3289,7 +2956,7 @@ fn sticker_tile(ui: &mut Ui, core: &Core, id: &str, cell: Rect, acts: &mut Acts)
                 egui::Align2::CENTER_CENTER,
                 t!("modal.failed_to_load"),
                 theme::tiny(),
-                FAINT,
+                FAINT(),
             );
         }
         Lookup::Missing | Lookup::Off => {
@@ -3298,7 +2965,7 @@ fn sticker_tile(ui: &mut Ui, core: &Core, id: &str, cell: Rect, acts: &mut Acts)
                 egui::Align2::CENTER_CENTER,
                 t!("modal.unavailable"),
                 theme::tiny(),
-                FAINT,
+                FAINT(),
             );
         }
     }
@@ -3320,19 +2987,19 @@ fn sticker_tile(ui: &mut Ui, core: &Core, id: &str, cell: Rect, acts: &mut Acts)
 fn picker_tab(ui: &mut Ui, label: &str, on: bool) -> bool {
     let galley = ui
         .painter()
-        .layout_no_wrap(label.to_owned(), theme::bold(13.0), TEXT);
+        .layout_no_wrap(label.to_owned(), theme::bold(13.0), TEXT());
     let size = galley.size() + vec2(18.0, 8.0);
     let (rect, resp) = ui.allocate_exact_size(size, Sense::click());
     let resp = resp.on_hover_cursor(CursorIcon::PointingHand);
     let radius = CornerRadius::same(RADIUS_SM);
     let fg = if on {
-        ui.painter().rect_filled(rect, radius, BG4);
-        TEXT
+        ui.painter().rect_filled(rect, radius, BG4());
+        TEXT()
     } else if resp.hovered() {
-        ui.painter().rect_filled(rect, radius, BG3);
-        TEXT
+        ui.painter().rect_filled(rect, radius, BG3());
+        TEXT()
     } else {
-        MUTED
+        MUTED()
     };
     ui.painter()
         .galley(rect.center() - galley.size() / 2.0, galley, fg);

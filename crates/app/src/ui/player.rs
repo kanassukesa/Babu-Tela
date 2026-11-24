@@ -24,8 +24,8 @@ pub fn audio(ui: &mut Ui, core: &Core, a: &Attachment, acts: &mut Acts) {
     ui.painter().rect(
         rect,
         CornerRadius::same(RADIUS_MD),
-        BG1,
-        Stroke::new(1.0, BG4),
+        BG1(),
+        Stroke::new(1.0, BG4()),
         egui::StrokeKind::Inside,
     );
     let mut inner = ui.new_child(
@@ -44,7 +44,7 @@ pub fn audio(ui: &mut Ui, core: &Core, a: &Attachment, acts: &mut Acts) {
         Layout::top_down(Align::Min),
         |ui| {
             ui.spacing_mut().item_spacing.y = 4.0;
-            widgets::ellipsis(ui, &a.name, theme::small(), TEXT);
+            widgets::ellipsis(ui, &a.name, theme::small(), TEXT());
             // The line and the time side by side, under the name.
             ui.horizontal(|ui| bar(ui, player, &a.url, acts));
         },
@@ -79,7 +79,7 @@ pub fn video(ui: &mut Ui, core: &Core, a: &Attachment, acts: &mut Acts, max: Vec
     match &status {
         Some(Status::Loading) => {
             let r = Rect::from_center_size(rect.center(), vec2(28.0, 28.0));
-            ui.put(r, egui::Spinner::new().size(28.0).color(TEXT));
+            ui.put(r, egui::Spinner::new().size(28.0).color(TEXT()));
         }
         Some(Status::Failed(_)) => {
             painter.text(
@@ -87,7 +87,7 @@ pub fn video(ui: &mut Ui, core: &Core, a: &Attachment, acts: &mut Acts, max: Vec
                 egui::Align2::CENTER_CENTER,
                 t!("player.cant_play_video"),
                 theme::small(),
-                MUTED,
+                MUTED(),
             );
         }
         Some(Status::Playing) => {}
@@ -204,15 +204,15 @@ fn bar(ui: &mut Ui, player: Option<&media::Player>, url: &str, acts: &mut Acts) 
     let resp = resp.on_hover_cursor(CursorIcon::PointingHand);
     let track = Rect::from_center_size(rect.center(), vec2(rect.width(), 4.0));
     let painter = ui.painter();
-    painter.rect_filled(track, CornerRadius::same(2), BG4);
+    painter.rect_filled(track, CornerRadius::same(2), BG4());
     let fraction = total.map_or(0.0, |d| (at / d.max(0.001)).clamp(0.0, 1.0)) as f32;
     let filled = Rect::from_min_max(
         track.min,
         pos2(track.left() + track.width() * fraction, track.max.y),
     );
-    painter.rect_filled(filled, CornerRadius::same(2), ACCENT);
+    painter.rect_filled(filled, CornerRadius::same(2), ACCENT());
     if resp.hovered() || resp.dragged() {
-        painter.circle_filled(pos2(filled.right(), track.center().y), 6.0, TEXT);
+        painter.circle_filled(pos2(filled.right(), track.center().y), 6.0, TEXT());
     }
     if (resp.clicked() || resp.dragged())
         && let (Some(pos), Some(d)) = (resp.interact_pointer_pos(), total)
@@ -227,14 +227,14 @@ fn bar(ui: &mut Ui, player: Option<&media::Player>, url: &str, acts: &mut Acts) 
     }
     ui.add_sized(
         vec2(label_w, 16.0),
-        egui::Label::new(egui::RichText::new(label).font(theme::tiny()).color(MUTED)),
+        egui::Label::new(egui::RichText::new(label).font(theme::tiny()).color(MUTED())),
     );
 }
 
 /// The enlarged view (Modal::Player).
 pub fn enlarged(ui: &mut Ui, core: &Core, a: &Attachment, acts: &mut Acts) {
     ui.horizontal(|ui| {
-        widgets::ellipsis(ui, &a.name, theme::bold(15.0), TEXT);
+        widgets::ellipsis(ui, &a.name, theme::bold(15.0), TEXT());
     });
     ui.add_space(8.0);
     let screen = ui.ctx().content_rect();

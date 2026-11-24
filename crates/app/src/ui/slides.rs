@@ -95,24 +95,24 @@ pub fn presenting_banner(ui: &mut Ui, core: &Core, users: &[VoiceUser]) {
     let id = v.id;
     let name = v.name.clone();
     egui::Frame::new()
-        .fill(crate::theme::ACCENT_SOFT)
+        .fill(crate::theme::ACCENT_SOFT())
         .inner_margin(egui::Margin::symmetric(16, 8))
         .corner_radius(egui::CornerRadius::same(crate::theme::RADIUS_SM))
         .show(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 8.0;
-                ui.add(Icon::Presentation.tinted(crate::theme::ACCENT));
+                ui.add(Icon::Presentation.tinted(crate::theme::ACCENT()));
                 ui.label(
                     egui::RichText::new(tf!("slides.presenting_by", name = user.name()))
                         .font(crate::theme::bold(14.0))
-                        .color(crate::theme::TEXT),
+                        .color(crate::theme::TEXT()),
                 );
                 if !name.is_empty() {
                     crate::ui::widgets::ellipsis(
                         ui,
                         &name,
                         crate::theme::small(),
-                        crate::theme::MUTED,
+                        crate::theme::MUTED(),
                     );
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -216,7 +216,7 @@ fn steps(ui: &mut Ui, rect: Rect, at: usize, count: usize, side: f32, style: Ib)
     let font = theme::bold(14.0);
     let text_w = ui
         .painter()
-        .layout_no_wrap(label.clone(), font.clone(), TEXT)
+        .layout_no_wrap(label.clone(), font.clone(), TEXT())
         .size()
         .x;
     let width = side * 2.0 + text_w + 24.0;
@@ -233,7 +233,7 @@ fn steps(ui: &mut Ui, rect: Rect, at: usize, count: usize, side: f32, style: Ib)
         back.surrender_focus();
         to = at.checked_sub(1);
     }
-    row.label(RichText::new(label).font(font).color(TEXT));
+    row.label(RichText::new(label).font(font).color(TEXT()));
     let next = widgets::icon_button(&mut row, Icon::Right, side, style, t!("slides.next_slide"));
     if next.clicked() {
         next.surrender_focus();
@@ -286,11 +286,11 @@ fn texture(
 /// The room of a slide whose picture is not here yet.
 fn waiting(ui: &Ui, rect: Rect) {
     ui.painter()
-        .rect_filled(rect, CornerRadius::same(RADIUS_SM), BG3);
+        .rect_filled(rect, CornerRadius::same(RADIUS_SM), BG3());
     let side = (rect.height() * 0.2).clamp(10.0, 32.0);
     egui::Spinner::new()
         .size(side)
-        .color(MUTED)
+        .color(MUTED())
         .paint_at(ui, Rect::from_center_size(rect.center(), Vec2::splat(side)));
 }
 
@@ -329,12 +329,12 @@ fn thumb(
         return resp;
     }
     let radius = CornerRadius::same(RADIUS_SM);
-    ui.painter().rect_filled(rect, radius, BG2);
+    ui.painter().rect_filled(rect, radius, BG2());
     let pic = slide(ui, core, v, i, rect.shrink(3.0), 2);
     let stroke = if current {
-        Stroke::new(2.0, ACCENT)
+        Stroke::new(2.0, ACCENT())
     } else if resp.hovered() {
-        Stroke::new(1.0, BG4)
+        Stroke::new(1.0, BG4())
     } else {
         Stroke::NONE
     };
@@ -342,14 +342,14 @@ fn thumb(
         .rect_stroke(rect, radius, stroke, egui::StrokeKind::Inside);
     let number = ui
         .painter()
-        .layout_no_wrap((i + 1).to_string(), theme::bold(11.0), TEXT);
+        .layout_no_wrap((i + 1).to_string(), theme::bold(11.0), TEXT());
     let tag = Rect::from_min_size(
         pos2(pic.left() + 4.0, pic.bottom() - number.size().y - 6.0),
         number.size() + vec2(8.0, 2.0),
     );
     ui.painter()
         .rect_filled(tag, CornerRadius::same(4), Color32::from_black_alpha(0xb0));
-    ui.painter().galley(tag.min + vec2(4.0, 1.0), number, TEXT);
+    ui.painter().galley(tag.min + vec2(4.0, 1.0), number, TEXT());
     resp
 }
 
@@ -413,8 +413,8 @@ fn presenter(ui: &mut Ui, core: &Core, v: &View, cid: i64, acts: &mut Acts) {
                 .layout(Layout::top_down(Align::Center)),
         );
         ui.add_space((rest.height() / 2.0 - 30.0).max(0.0));
-        ui.add(egui::Spinner::new().size(24.0).color(MUTED));
-        ui.label(RichText::new(tf!("slides.opening", name = v.name)).color(MUTED));
+        ui.add(egui::Spinner::new().size(24.0).color(MUTED()));
+        ui.label(RichText::new(tf!("slides.opening", name = v.name)).color(MUTED()));
         return;
     }
     let strip_h = (full.height() * 0.15).clamp(64.0, 104.0);
@@ -476,11 +476,11 @@ fn presenter_bar(ui: &mut Ui, v: &View, rect: Rect, cid: i64, acts: &mut Acts) {
             .layout(Layout::left_to_right(Align::Center)),
     );
     ui.spacing_mut().item_spacing.x = 8.0;
-    ui.add(Icon::Presentation.tinted(ACCENT));
+    ui.add(Icon::Presentation.tinted(ACCENT()));
     ui.label(
         RichText::new(t!("slides.you_presenting"))
             .font(theme::bold(14.0))
-            .color(TEXT),
+            .color(TEXT()),
     );
     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
         ui.spacing_mut().item_spacing.x = 8.0;
@@ -502,9 +502,9 @@ fn presenter_bar(ui: &mut Ui, v: &View, rect: Rect, cid: i64, acts: &mut Acts) {
             clock(ui, v);
         }
         if let Some(status) = status(v) {
-            ui.label(RichText::new(status).font(theme::small()).color(MUTED));
+            ui.label(RichText::new(status).font(theme::small()).color(MUTED()));
         }
-        widgets::ellipsis(ui, &v.name, theme::small(), MUTED);
+        widgets::ellipsis(ui, &v.name, theme::small(), MUTED());
     });
 }
 
@@ -543,14 +543,14 @@ fn clock(ui: &mut Ui, v: &View) {
             egui::Label::new(
                 RichText::new(text)
                     .font(FontId::monospace(13.0))
-                    .color(TEXT),
+                    .color(TEXT()),
             )
             .sense(Sense::click())
             .selectable(false),
         )
         .on_hover_cursor(CursorIcon::PointingHand)
         .on_hover_text(t!("slides.clock_tip"));
-    ui.add(Icon::Clock.image(crate::icons::SMALL, MUTED));
+    ui.add(Icon::Clock.image(crate::icons::SMALL, MUTED()));
     if resp.clicked() {
         ui.data_mut(|d| d.insert_temp(id, Instant::now()));
     }
@@ -580,13 +580,13 @@ fn next_and_notes(ui: &mut Ui, core: &Core, v: &View, rect: Rect) {
         slide(&ui, core, v, v.at + 1, room, 1);
     } else {
         ui.painter()
-            .rect_filled(room, CornerRadius::same(RADIUS_SM), BG2);
+            .rect_filled(room, CornerRadius::same(RADIUS_SM), BG2());
         ui.painter().text(
             room.center(),
             egui::Align2::CENTER_CENTER,
             t!("slides.end_of_presentation"),
             theme::small(),
-            FAINT,
+            FAINT(),
         );
     }
     ui.add_space(14.0);
@@ -602,12 +602,12 @@ fn next_and_notes(ui: &mut Ui, core: &Core, v: &View, rect: Rect) {
         .auto_shrink([false, false])
         .show(&mut ui, |ui| {
             if notes.is_empty() {
-                ui.label(RichText::new(t!("slides.no_notes")).color(FAINT));
+                ui.label(RichText::new(t!("slides.no_notes")).color(FAINT()));
             } else {
                 ui.label(
                     RichText::new(notes)
                         .font(FontId::proportional(15.0))
-                        .color(TEXT),
+                        .color(TEXT()),
                 );
             }
         });
@@ -832,11 +832,11 @@ fn viewer_bar(
     ui.spacing_mut().item_spacing.x = 8.0;
     let user = core.user(uid);
     let (avatar, _) = ui.allocate_exact_size(Vec2::splat(24.0), Sense::hover());
-    widgets::paint_avatar(&ui, core, &user, avatar, false, BG2);
+    widgets::paint_avatar(&ui, core, &user, avatar, false, BG2());
     ui.label(
         RichText::new(tf!("slides.presenting_by", name = user.name()))
             .font(theme::bold(14.0))
-            .color(TEXT),
+            .color(TEXT()),
     );
     let mut back = false;
     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -877,7 +877,7 @@ fn viewer_bar(
                     .color(WARN),
             );
         }
-        widgets::ellipsis(ui, &v.name, theme::small(), MUTED);
+        widgets::ellipsis(ui, &v.name, theme::small(), MUTED());
     });
     back
 }
@@ -923,7 +923,7 @@ fn controls(ui: &mut Ui, v: &View, area: Rect, at: usize, b: &mut Browse) {
             egui::Label::new(
                 RichText::new(format!("{:.0}%", b.zoom * 100.0))
                     .font(theme::small())
-                    .color(TEXT),
+                    .color(TEXT()),
             )
             .sense(Sense::click())
             .selectable(false),

@@ -56,6 +56,33 @@ pub struct Prefs {
     /// How loud the call's music plays here, 0 to 2 (the music window's
     /// "só para mim"; none: as it comes, 1).
     pub music_volume: Option<f32>,
+    /// The colour the surfaces are tinted with (Configurações > Aparência;
+    /// none: the app's indigo), as red, green and blue.
+    pub theme_base: Option<[u8; 3]>,
+    /// The accent picked there (none: the app's periwinkle).
+    pub theme_accent: Option<[u8; 3]>,
+    /// Servers silenced here (the server menu's "Silenciar"): no unread
+    /// marks, only the mentions count.
+    pub muted_servers: Vec<i64>,
+    /// Channels silenced here (right click on a channel).
+    pub muted_channels: Vec<i64>,
+    /// Servers whose silenced channels are left out of the list.
+    pub hide_muted: Vec<i64>,
+    /// What each server warns about, by its id as text; none: mentions.
+    pub server_notify: HashMap<String, NotifyLevel>,
+}
+
+/// What a server warns about with a sound and a notification.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum NotifyLevel {
+    /// Every message.
+    All,
+    /// Only those that mention me.
+    #[default]
+    Mentions,
+    /// Nothing at all.
+    Nothing,
 }
 
 /// How loud one person plays on this PC: their voice and the sound of
@@ -92,6 +119,12 @@ impl PersonAudio {
 }
 
 impl Prefs {
+    /// The palette of the theme picked in Configurações > Aparência.
+    pub fn palette(&self) -> crate::theme::Palette {
+        let rgb = |c: [u8; 3]| egui::Color32::from_rgb(c[0], c[1], c[2]);
+        crate::theme::Palette::new(self.theme_base.map(rgb), self.theme_accent.map(rgb))
+    }
+
     /// How loud the call's music plays here, 0 to 2.
     pub fn music_volume(&self) -> f32 {
         self.music_volume
@@ -164,6 +197,12 @@ mod tests {
             lang: Some(crate::lang::Lang::En),
             download_dir: Some(r"D:\Arquivos\Baixados".into()),
             music_volume: Some(0.35),
+            theme_base: Some([0, 0, 0]),
+            theme_accent: Some([0x3b, 0x8b, 0xff]),
+            muted_servers: vec![2],
+            muted_channels: vec![5, 9],
+            hide_muted: vec![2],
+            server_notify: [("2".to_owned(), NotifyLevel::Nothing)].into_iter().collect(),
         };
         p.save(&path);
 
@@ -182,6 +221,13 @@ mod tests {
         assert_eq!(back.emoji_recent, p.emoji_recent);
         assert_eq!(back.emoji_tone, 3);
         assert_eq!(back.music_volume(), 0.35);
+        assert_eq!(back.theme_base, Some([0, 0, 0]));
+        assert_eq!(back.theme_accent, Some([0x3b, 0x8b, 0xff]));
+        assert_eq!(back.palette(), p.palette());
+        assert_eq!(back.muted_servers, [2]);
+        assert_eq!(back.muted_channels, [5, 9]);
+        assert_eq!(back.hide_muted, [2]);
+        assert_eq!(back.server_notify.get("2"), Some(&NotifyLevel::Nothing));
         // A file from before these knows nothing of them.
         std::fs::write(&path, br#"{"quality": "720p30"}"#).unwrap();
         let old = Prefs::load(&path);

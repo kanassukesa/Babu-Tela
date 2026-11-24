@@ -19,13 +19,14 @@ use crate::theme::{self, *};
 /// The accent gradient as a tiny texture, so a rounded shape can be filled
 /// with it the way `background: var(--grad)` filled the buttons.
 fn gradient(ui: &Ui) -> Option<TextureHandle> {
-    let id = Id::unique("babutela-gradient");
+    // One per pair of ends: picking another accent makes a new one.
+    let id = Id::unique(("babutela-gradient", GRAD_A(), GRAD_B()));
     if let Some(t) = ui.ctx().data(|d| d.get_temp::<TextureHandle>(id)) {
         return Some(t);
     }
     let w = 64;
     let pixels: Vec<Color32> = (0..w)
-        .map(|x| theme::mix(GRAD_A, GRAD_B, x as f32 / (w - 1) as f32))
+        .map(|x| theme::mix(GRAD_A(), GRAD_B(), x as f32 / (w - 1) as f32))
         .collect();
     let img = egui::ColorImage::new([w, 1], pixels);
     let t = ui
@@ -47,7 +48,7 @@ pub fn paint_gradient(ui: &Ui, rect: Rect, radius: impl Into<CornerRadius>, dim:
         }
         None => {
             ui.painter()
-                .rect_filled(rect, radius, ACCENT.gamma_multiply(dim));
+                .rect_filled(rect, radius, ACCENT().gamma_multiply(dim));
         }
     }
 }
@@ -119,8 +120,8 @@ impl<'a> Button<'a> {
             vec2(16.0, 9.0)
         };
         let ink = match self.kind {
-            Kind::Primary => ACCENT_INK,
-            Kind::Ghost => TEXT,
+            Kind::Primary => ACCENT_INK(),
+            Kind::Ghost => TEXT(),
             Kind::Danger => Color32::WHITE,
         };
         let galley = ui.painter().layout_no_wrap(self.text.to_owned(), font, ink);
@@ -142,7 +143,7 @@ impl<'a> Button<'a> {
                 Kind::Primary => paint_gradient(ui, rect, radius, dim),
                 Kind::Ghost => {
                     ui.painter()
-                        .rect_filled(rect, radius, BG3.gamma_multiply(dim));
+                        .rect_filled(rect, radius, BG3().gamma_multiply(dim));
                 }
                 Kind::Danger => {
                     ui.painter()
@@ -213,15 +214,15 @@ pub fn google_button(ui: &mut Ui, label: &str, enabled: bool) -> Response {
 /// A text that acts as a link (`.link`).
 pub fn link(ui: &mut Ui, text: &str) -> Response {
     let font = theme::body();
-    let galley = ui.painter().layout_no_wrap(text.to_owned(), font, ACCENT);
+    let galley = ui.painter().layout_no_wrap(text.to_owned(), font, ACCENT());
     let (rect, resp) = ui.allocate_exact_size(galley.size(), Sense::click());
     let hovered = resp.hovered();
-    ui.painter().galley(rect.min, galley, ACCENT);
+    ui.painter().galley(rect.min, galley, ACCENT());
     if hovered {
         ui.painter().hline(
             rect.x_range(),
             rect.bottom() - 1.0,
-            Stroke::new(1.0, ACCENT),
+            Stroke::new(1.0, ACCENT()),
         );
     }
     resp.on_hover_cursor(CursorIcon::PointingHand)
@@ -266,11 +267,11 @@ pub fn icon_button_sized(
     };
     let danger_soft = Color32::from_rgba_unmultiplied(0xef, 0x5f, 0x67, 0x22);
     let (bg, fg) = match (style, hovered) {
-        (Ib::Normal, false) => (Some(BG3), MUTED),
-        (Ib::Normal, true) => (Some(BG4), TEXT),
-        (Ib::Bare, false) => (None, MUTED),
-        (Ib::Bare, true) => (Some(BG3), TEXT),
-        (Ib::On, _) => (None, ACCENT_INK),
+        (Ib::Normal, false) => (Some(BG3()), MUTED()),
+        (Ib::Normal, true) => (Some(BG4()), TEXT()),
+        (Ib::Bare, false) => (None, MUTED()),
+        (Ib::Bare, true) => (Some(BG3()), TEXT()),
+        (Ib::On, _) => (None, ACCENT_INK()),
         (Ib::Off, _) => (Some(danger_soft), DANGER),
         (Ib::Hang, false) => (Some(danger_soft), DANGER),
         (Ib::Hang, true) => (Some(DANGER), Color32::WHITE),
@@ -367,7 +368,7 @@ pub fn paint_avatar(ui: &Ui, core: &Core, user: &User, rect: Rect, dot: bool, ri
                 .paint_at(ui, rect);
         }
         None => {
-            painter.circle_filled(center, size / 2.0, theme::color_or(&user.color, BG4));
+            painter.circle_filled(center, size / 2.0, theme::color_or(&user.color, BG4()));
             painter.text(
                 center,
                 Align2::CENTER_CENTER,
@@ -378,7 +379,7 @@ pub fn paint_avatar(ui: &Ui, core: &Core, user: &User, rect: Rect, dot: bool, ri
         }
     }
     if core.voice.speaking(user.id) {
-        painter.circle_stroke(center, size / 2.0 + 1.0, Stroke::new(2.0, ACCENT));
+        painter.circle_stroke(center, size / 2.0 + 1.0, Stroke::new(2.0, ACCENT()));
     }
     if dot {
         let d = (size * 0.3).max(10.0);
@@ -412,17 +413,17 @@ pub fn badge_at(ui: &Ui, center: Pos2, n: u32, border: Option<Color32>) {
 /// A role's name with its colour dot (`.pill`).
 pub fn pill(ui: &mut Ui, name: &str, color: Option<&str>) -> Response {
     let font = theme::small();
-    let galley = ui.painter().layout_no_wrap(name.to_owned(), font, TEXT);
+    let galley = ui.painter().layout_no_wrap(name.to_owned(), font, TEXT());
     let size = vec2(galley.size().x + 9.0 + 8.0 + 6.0 + 9.0, 20.0);
     let (rect, resp) = ui.allocate_exact_size(size, Sense::click());
-    ui.painter().rect_filled(rect, CornerRadius::same(10), BG3);
-    let dot = color.and_then(theme::parse_hex).unwrap_or(FAINT);
+    ui.painter().rect_filled(rect, CornerRadius::same(10), BG3());
+    let dot = color.and_then(theme::parse_hex).unwrap_or(FAINT());
     ui.painter()
         .circle_filled(pos2(rect.left() + 13.0, rect.center().y), 4.0, dot);
     ui.painter().galley(
         pos2(rect.left() + 23.0, rect.center().y - galley.size().y / 2.0),
         galley,
-        TEXT,
+        TEXT(),
     );
     resp
 }
@@ -432,19 +433,19 @@ pub fn caption(ui: &mut Ui, text: &str) {
     ui.label(
         egui::RichText::new(text.to_uppercase())
             .font(theme::bold(11.0))
-            .color(FAINT)
+            .color(FAINT())
             .extra_letter_spacing(0.5),
     );
 }
 
 /// The muted explanation under a heading (`p.sub`).
 pub fn sub(ui: &mut Ui, text: &str) {
-    ui.label(egui::RichText::new(text).color(MUTED));
+    ui.label(egui::RichText::new(text).color(MUTED()));
 }
 
 /// A heading of a dialog (`h3`).
 pub fn h3(ui: &mut Ui, text: &str) {
-    ui.label(egui::RichText::new(text).font(theme::h3()).color(TEXT));
+    ui.label(egui::RichText::new(text).font(theme::h3()).color(TEXT()));
 }
 
 /// The error line under a form (`.err`).
@@ -460,7 +461,7 @@ pub fn field(ui: &mut Ui, label: &str, value: &mut String, max: usize, password:
     ui.label(
         egui::RichText::new(label.to_uppercase())
             .font(theme::bold(12.0))
-            .color(MUTED)
+            .color(MUTED())
             .extra_letter_spacing(0.5),
     );
     ui.add_space(2.0);
@@ -474,17 +475,17 @@ pub fn input(ui: &mut Ui, value: &mut String, max: usize, password: bool, hint: 
     let edit = TextEdit::singleline(value)
         .password(password)
         .char_limit(max)
-        .hint_text(egui::RichText::new(hint).color(FAINT))
+        .hint_text(egui::RichText::new(hint).color(FAINT()))
         .desired_width(f32::INFINITY)
         .font(theme::body())
         .margin(egui::Margin::symmetric(12, 9))
-        .background_color(BG0);
+        .background_color(BG0());
     let resp = ui.add(edit);
     if resp.has_focus() {
         ui.painter().rect_stroke(
             resp.rect,
             CornerRadius::same(RADIUS_MD),
-            Stroke::new(1.0, ACCENT),
+            Stroke::new(1.0, ACCENT()),
             StrokeKind::Inside,
         );
     }
@@ -498,9 +499,9 @@ pub fn check_row(ui: &mut Ui, label: &str, hint: &str, value: &mut bool, enabled
     ui.horizontal(|ui| {
         ui.vertical(|ui| {
             ui.set_width(ui.available_width() - 30.0);
-            ui.label(egui::RichText::new(label).color(if enabled { TEXT } else { FAINT }));
+            ui.label(egui::RichText::new(label).color(if enabled { TEXT() } else { FAINT() }));
             if !hint.is_empty() {
-                ui.label(egui::RichText::new(hint).color(MUTED).size(13.0));
+                ui.label(egui::RichText::new(hint).color(MUTED()).size(13.0));
             }
         });
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -514,7 +515,7 @@ pub fn check_row(ui: &mut Ui, label: &str, hint: &str, value: &mut bool, enabled
     ui.add_space(4.0);
     let y = ui.cursor().top();
     ui.painter()
-        .hline(ui.max_rect().x_range(), y, Stroke::new(1.0, BG3));
+        .hline(ui.max_rect().x_range(), y, Stroke::new(1.0, BG3()));
     ui.add_space(4.0);
     flipped
 }
@@ -524,7 +525,7 @@ pub fn divider(ui: &mut Ui) {
     ui.add_space(14.0);
     let y = ui.cursor().top();
     ui.painter()
-        .hline(ui.max_rect().x_range(), y, Stroke::new(1.0, BG4));
+        .hline(ui.max_rect().x_range(), y, Stroke::new(1.0, BG4()));
     ui.add_space(16.0);
 }
 

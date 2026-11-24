@@ -26,7 +26,7 @@ use crate::giphy::{self, Giphy};
 use crate::images::Images;
 use crate::model::*;
 use crate::net::{self, Api, ApiResult, Req};
-use crate::prefs::{PersonAudio, Prefs};
+use crate::prefs::{NotifyLevel, PersonAudio, Prefs};
 use crate::shell::Shell;
 use crate::sounds::{Cue, Sounds};
 use crate::voice::Voice;
@@ -237,6 +237,7 @@ pub enum FormId {
     Profile,
     Report,
     AddFriend,
+    Nick,
 }
 
 // ---------------------------------------------------------------- dialogs
@@ -247,6 +248,45 @@ pub struct RoleEditor {
     pub name: String,
     pub color: [u8; 3],
     pub perms: i64,
+}
+
+/// The sections of Configurações, in the order of its menu.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SettingsTab {
+    Account,
+    Privacy,
+    Notifications,
+    /// The microphone, the output, and the screen shares.
+    Voice,
+    Appearance,
+    Language,
+    /// Windows: starting with it, the tray, the version.
+    System,
+}
+
+impl SettingsTab {
+    pub const ALL: [SettingsTab; 7] = [
+        SettingsTab::Account,
+        SettingsTab::Privacy,
+        SettingsTab::Notifications,
+        SettingsTab::Voice,
+        SettingsTab::Appearance,
+        SettingsTab::Language,
+        SettingsTab::System,
+    ];
+
+    /// Its name in the tests (smoke.rs `aba-config:`).
+    pub fn key(self) -> &'static str {
+        match self {
+            SettingsTab::Account => "conta",
+            SettingsTab::Privacy => "privacidade",
+            SettingsTab::Notifications => "notificacoes",
+            SettingsTab::Voice => "voz",
+            SettingsTab::Appearance => "aparencia",
+            SettingsTab::Language => "idioma",
+            SettingsTab::System => "sistema",
+        }
+    }
 }
 
 pub enum Modal {
@@ -282,12 +322,29 @@ pub enum Modal {
         name: String,
         new_role: String,
         role: Option<RoleEditor>,
+        /// The section open on the right.
+        tab: ServerTab,
+        /// The search over the members.
+        search: String,
+        /// The member opened in Membros.
+        member: Option<i64>,
     },
     Profile {
         uid: i64,
     },
     Settings {
         display_name: String,
+        /// The section open on the right.
+        tab: SettingsTab,
+    },
+    /// What server `sid` warns about, and what is silenced in it.
+    Notify {
+        sid: i64,
+    },
+    /// My nickname in server `sid`.
+    Nick {
+        sid: i64,
+        nick: String,
     },
     Report {
         mid: i64,
@@ -396,10 +453,53 @@ pub enum Action {
     Restart,
 }
 
+/// The sections of a server's settings.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ServerTab {
+    /// The server's name, picture and colour ("Perfil do servidor").
+    Overview,
+    Members,
+    Roles,
+    Invites,
+    /// Whether it is private, and who asked to come in.
+    Access,
+    Bans,
+    Reports,
+}
+
+impl ServerTab {
+    /// The name the test mode knows it by.
+    pub fn key(self) -> &'static str {
+        match self {
+            ServerTab::Overview => "perfil",
+            ServerTab::Members => "membros",
+            ServerTab::Roles => "cargos",
+            ServerTab::Invites => "convites",
+            ServerTab::Access => "acesso",
+            ServerTab::Bans => "banimentos",
+            ServerTab::Reports => "denuncias",
+        }
+    }
+
+    pub const ALL: [ServerTab; 7] = [
+        ServerTab::Overview,
+        ServerTab::Members,
+        ServerTab::Roles,
+        ServerTab::Invites,
+        ServerTab::Access,
+        ServerTab::Bans,
+        ServerTab::Reports,
+    ];
+}
+
 /// The small floating menus.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum PopKind {
     ServerMenu,
+    /// A channel's own menu (a right click on it).
+    ChannelMenu(i64),
+    /// A server's menu in the rail (a right click on its icon).
+    RailMenu(i64),
     /// Reactions for a message.
     React(i64),
     /// Emoji for the composer.
@@ -958,6 +1058,7 @@ impl Core {
         crate::lang::set(prefs.lang.unwrap_or_else(crate::lang::os_default));
         // Before any connection is made.
         crate::voice::rtc::set_hide_ip(prefs.hide_ip);
+        crate::theme::set_palette(&ctx, prefs.palette());
         // Before anything opens a device.
         crate::devices::set_input(prefs.input_device.as_ref().map(|d| d.id.clone()));
         crate::devices::set_output(prefs.output_device.as_ref().map(|d| d.id.clone()));
@@ -2703,7 +2804,17 @@ impl Core {
             return;
         }
         let dm = self.dms.iter().position(|d| d.id == cid);
-        let hot = dm.is_some() || self.mentions_me(&m.content);
+        // What this server was set to warn about, and whether the server or
+        // the channel is silenced here.
+        let sid = self.servers.iter().find(|s| s.channel(cid).is_some()).map(|s| s.id);
+        let (level, silenced) = match sid {
+            Some(sid) => (
+                self.notify_level(sid),
+                self.server_muted(sid) || self.channel_muted(cid),
+            ),
+            None => (NotifyLevel::Mentions, false),
+        };
+        let hot = dm.is_some() || (level != NotifyLevel::Nothing && self.mentions_me(&m.content));
         let u = self.unread.entry(cid).or_default();
         u.n += 1;
         if hot {
@@ -2711,7 +2822,8 @@ impl Core {
         }
         self.set_badge(self.total_hot());
         let dnd = self.me.as_ref().is_some_and(|u| u.status == Status::Dnd);
-        if hot && !dnd {
+        let warn = hot || (level == NotifyLevel::All && !silenced);
+        if warn && !dnd {
             self.sounds.play(Cue::Message);
             let mut view = View::Home { channel: Some(cid) };
             let mut place = String::new();
@@ -2909,17 +3021,78 @@ impl Core {
         }
     }
 
-    /// Unread across a server: the hot count, and whether there is any.
+    /// Unread across a server: the hot count, and whether there is any
+    /// (not counting what is silenced here).
     pub fn server_unread(&self, s: &Server) -> (u32, bool) {
         let mut n = 0;
         let mut any = false;
+        let muted = self.server_muted(s.id);
         for c in &s.channels {
             if let Some(u) = self.unread.get(&c.id) {
-                any = true;
+                any |= !muted && !self.channel_muted(c.id);
                 n += u.hot;
             }
         }
         (n, any)
+    }
+
+    /// Everything in a server marked as read.
+    pub fn mark_server_read(&mut self, sid: i64) {
+        self.pop = None;
+        let Some(s) = self.server(sid) else { return };
+        let ids: Vec<i64> = s.channels.iter().map(|c| c.id).collect();
+        for id in ids {
+            self.unread.remove(&id);
+        }
+        self.set_badge(self.total_hot());
+    }
+
+    // ------------------------------------------------------------ silencing
+
+    pub fn server_muted(&self, sid: i64) -> bool {
+        self.prefs.muted_servers.contains(&sid)
+    }
+
+    pub fn channel_muted(&self, cid: i64) -> bool {
+        self.prefs.muted_channels.contains(&cid)
+    }
+
+    /// Whether this server's silenced channels are left out of the list.
+    pub fn hides_muted(&self, sid: i64) -> bool {
+        self.prefs.hide_muted.contains(&sid)
+    }
+
+    pub fn notify_level(&self, sid: i64) -> NotifyLevel {
+        self.prefs
+            .server_notify
+            .get(&sid.to_string())
+            .copied()
+            .unwrap_or_default()
+    }
+
+    pub fn set_notify_level(&mut self, sid: i64, level: NotifyLevel) {
+        if level == NotifyLevel::default() {
+            self.prefs.server_notify.remove(&sid.to_string());
+        } else {
+            self.prefs.server_notify.insert(sid.to_string(), level);
+        }
+        self.save_prefs();
+    }
+
+    pub fn toggle_mute_server(&mut self, sid: i64) {
+        toggle(&mut self.prefs.muted_servers, sid);
+        self.save_prefs();
+    }
+
+    pub fn toggle_mute_channel(&mut self, cid: i64) {
+        self.pop = None;
+        toggle(&mut self.prefs.muted_channels, cid);
+        self.save_prefs();
+    }
+
+    pub fn toggle_hide_muted(&mut self, sid: i64) {
+        toggle(&mut self.prefs.hide_muted, sid);
+        self.save_prefs();
     }
 
     // ------------------------------------------------------------ navigation
@@ -3079,6 +3252,15 @@ impl Core {
         self.prefs.lang = Some(lang);
         self.save_prefs();
         self.ctx.request_repaint();
+    }
+
+    /// The theme picked in Configurações > Aparência: the surfaces' tint
+    /// and the accent (none for the app's own), at once and from now on.
+    pub fn set_theme(&mut self, base: Option<[u8; 3]>, accent: Option<[u8; 3]>) {
+        self.prefs.theme_base = base;
+        self.prefs.theme_accent = accent;
+        crate::theme::set_palette(&self.ctx, self.prefs.palette());
+        self.save_prefs();
     }
 
     /// "Conectar pelo Tor" (tor.rs): chosen at the start, so the app opens
@@ -3309,7 +3491,10 @@ impl Core {
             .as_ref()
             .map(|u| u.display_name.clone())
             .unwrap_or_default();
-        self.open_modal(Modal::Settings { display_name });
+        self.open_modal(Modal::Settings {
+            display_name,
+            tab: SettingsTab::Account,
+        });
         self.list_audio_devices();
     }
 
@@ -3366,6 +3551,19 @@ impl Core {
     }
 
     pub fn open_server_settings(&mut self, sid: i64) {
+        let tab = self
+            .server(sid)
+            .and_then(|s| {
+                ServerTab::ALL
+                    .into_iter()
+                    .find(|t| crate::ui::server_settings_shown(s, *t))
+            })
+            .unwrap_or(ServerTab::Members);
+        self.open_server_settings_at(sid, tab);
+    }
+
+    pub fn open_server_settings_at(&mut self, sid: i64, tab: ServerTab) {
+        self.pop = None;
         let Some(s) = self.server(sid) else { return };
         let name = s.name.clone();
         self.open_modal(Modal::ServerSettings {
@@ -3373,6 +3571,52 @@ impl Core {
             name,
             new_role: String::new(),
             role: None,
+            tab,
+            search: String::new(),
+            member: None,
+        });
+    }
+
+    pub fn open_notify_settings(&mut self, sid: i64) {
+        self.pop = None;
+        self.open_modal(Modal::Notify { sid });
+    }
+
+    /// The dialog for my nickname in server `sid`.
+    pub fn open_nick(&mut self, sid: i64) {
+        self.pop = None;
+        let me = self.me_id();
+        let nick = self
+            .server(sid)
+            .and_then(|s| s.member(me))
+            .and_then(|m| m.nick.clone())
+            .unwrap_or_default();
+        self.open_modal(Modal::Nick { sid, nick });
+    }
+
+    /// What I am called in server `sid` (empty: my own name).
+    pub fn set_nick(&mut self, sid: i64, nick: String) {
+        self.call(
+            Req::put(format!("/servers/{sid}/nick")).with(json!({ "nick": nick.trim() })),
+            Then::CloseModalToast(crate::t!("server.nick_saved").into()),
+            ErrTo::Form(FormId::Nick),
+        );
+    }
+
+    /// The dialog for a new channel; for a new category, its name already
+    /// asked for (a category is made with its first channel).
+    pub fn new_channel(&mut self, sid: i64, category: bool) {
+        self.pop = None;
+        self.open_modal(Modal::NewChannel {
+            sid,
+            kind: ChannelKind::Text,
+            name: String::new(),
+            category: if category {
+                crate::t!("server.new_category").to_owned()
+            } else {
+                String::new()
+            },
+            quick: false,
         });
     }
 
@@ -4482,5 +4726,14 @@ mod tests {
         place(&mut list, sent(4, "a"));
         assert_eq!(ids(&list), [1, 2, 3, 4]);
         assert!(list.iter().all(|m| !m.pending));
+    }
+}
+
+/// Puts `id` in the list, or takes it out if it was there.
+fn toggle(list: &mut Vec<i64>, id: i64) {
+    if let Some(i) = list.iter().position(|x| *x == id) {
+        list.remove(i);
+    } else {
+        list.push(id);
     }
 }

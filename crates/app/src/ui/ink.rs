@@ -17,7 +17,7 @@ use crate::core::{Core, Pop, PopKind};
 use crate::icons::Icon;
 use crate::ink::{self, COLORS, Ink, Page, Pen, SIZES, Surface, Tool};
 use crate::t;
-use crate::theme::{self, ACCENT, MUTED, TEXT};
+use crate::theme::{self, ACCENT, MUTED};
 
 /// The tools, in the toolbar's order.
 const TOOLS: [(Tool, Icon); 8] = [
@@ -78,8 +78,6 @@ pub fn over(
             toolbar(ui, ink, page.surface, clip, acts);
         }
         keys(ui, ink);
-    } else if !hidden && ui.rect_contains_pointer(clip) {
-        start(ui, ink, page.surface, clip);
     }
 }
 
@@ -255,7 +253,7 @@ fn text_input(ui: &mut Ui, ink: &Ink, page: Page, picture: Rect, clip: Rect) {
                 .background_color(Color32::TRANSPARENT)
                 .char_limit(crate::ink::MAX_TEXT_BYTES)
                 .desired_width(inner.width())
-                .hint_text(egui::RichText::new(t!("ink.text_hint")).color(MUTED));
+                .hint_text(egui::RichText::new(t!("ink.text_hint")).color(MUTED()));
             ui.put(inner, text_edit)
         })
         .inner;
@@ -319,39 +317,6 @@ fn keys(ui: &Ui, ink: &Ink) {
     }
 }
 
-/// "Anotar", at the top right of the picture while the pointer is on it.
-fn start(ui: &mut Ui, ink: &Ink, surface: Surface, clip: Rect) {
-    let galley =
-        ui.painter()
-            .layout_no_wrap(t!("ink.annotate").to_owned(), theme::bold(13.0), TEXT);
-    let size = vec2(galley.size().x + 44.0, 30.0);
-    let rect = Rect::from_min_size(pos2(clip.right() - size.x - 10.0, clip.top() + 10.0), size);
-    let resp = ui.interact(
-        rect,
-        Id::unique(("ink-start", surface.owner, surface.id)),
-        Sense::click(),
-    );
-    crate::smoke::target(|| "anotar".into(), rect);
-    let bg = Color32::from_black_alpha(if resp.hovered() { 0xf0 } else { 0xc0 });
-    ui.painter().rect_filled(rect, CornerRadius::same(15), bg);
-    Icon::Edit.image(16.0, TEXT).paint_at(
-        ui,
-        Rect::from_center_size(pos2(rect.left() + 19.0, rect.center().y), Vec2::splat(16.0)),
-    );
-    ui.painter().galley(
-        pos2(rect.left() + 33.0, rect.center().y - galley.size().y / 2.0),
-        galley,
-        TEXT,
-    );
-    if resp
-        .on_hover_cursor(CursorIcon::PointingHand)
-        .on_hover_text(t!("ink.annotate_tip"))
-        .clicked()
-    {
-        ink.open(surface);
-    }
-}
-
 /// A thin line between the toolbar's groups.
 fn separator(ui: &mut Ui) {
     let (rect, _) = ui.allocate_exact_size(vec2(9.0, SIDE), Sense::hover());
@@ -412,7 +377,7 @@ fn toolbar(ui: &mut Ui, ink: &Ink, surface: Surface, clip: Rect, acts: &mut Acts
     let (swatch, resp) = row.allocate_exact_size(Vec2::splat(SIDE), Sense::click());
     if resp.hovered() {
         row.painter()
-            .rect_filled(swatch, CornerRadius::same(theme::RADIUS_MD), theme::BG3);
+            .rect_filled(swatch, CornerRadius::same(theme::RADIUS_MD), theme::BG3());
     }
     let [r, g, b] = COLORS[pen.color];
     row.painter().circle(
@@ -523,9 +488,9 @@ pub fn color_pop(ui: &mut Ui, core: &Core, acts: &mut Acts) {
                 let (rect, resp) = ui.allocate_exact_size(Vec2::splat(SWATCH), Sense::click());
                 crate::smoke::target(|| format!("cor:{i}"), rect);
                 let ring = if i == pen.color {
-                    Stroke::new(2.0, ACCENT)
+                    Stroke::new(2.0, ACCENT())
                 } else if resp.hovered() {
-                    Stroke::new(2.0, MUTED)
+                    Stroke::new(2.0, MUTED())
                 } else {
                     Stroke::new(1.0, Color32::from_white_alpha(0x40))
                 };
@@ -557,9 +522,9 @@ pub fn color_pop(ui: &mut Ui, core: &Core, acts: &mut Acts) {
         {
             let (rect, resp) = ui.allocate_exact_size(vec2(SWATCH + 10.0, SWATCH), Sense::click());
             let bg = if i == pen.size {
-                theme::BG4
+                theme::BG4()
             } else if resp.hovered() {
-                theme::BG3
+                theme::BG3()
             } else {
                 Color32::TRANSPARENT
             };

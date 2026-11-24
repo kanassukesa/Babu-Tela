@@ -185,11 +185,11 @@ pub fn draw(ui: &mut Ui, core: &mut Core, acts: &mut Acts) {
     let slides = presentation.filter(|p| aside != Some(p.id));
     if !fullscreen {
         super::header(ui, "stage-head", |ui| {
-            ui.add(Icon::Speaker.tinted(MUTED));
+            ui.add(Icon::Speaker.tinted(MUTED()));
             ui.label(
                 egui::RichText::new(&name)
                     .font(theme::bold(15.0))
-                    .color(TEXT),
+                    .color(TEXT()),
             );
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 let style = if show_members { Ib::Normal } else { Ib::Bare };
@@ -216,7 +216,7 @@ pub fn draw(ui: &mut Ui, core: &mut Core, acts: &mut Acts) {
         Panel::bottom("stagebar")
             .resizable(false)
             .show_separator_line(false)
-            .frame(Frame::new().fill(BG0).inner_margin(Margin::same(12)))
+            .frame(Frame::new().fill(BG0()).inner_margin(Margin::same(12)))
             .show(ui, |ui| {
                 ui.vertical_centered(|ui| {
                     if joined {
@@ -233,7 +233,7 @@ pub fn draw(ui: &mut Ui, core: &mut Core, acts: &mut Acts) {
                             acts.later(move |c| c.join_voice(cid));
                         }
                     } else {
-                        ui.label(egui::RichText::new(t!("stage.no_join_perm")).color(MUTED));
+                        ui.label(egui::RichText::new(t!("stage.no_join_perm")).color(MUTED()));
                     }
                 });
             });
@@ -241,7 +241,7 @@ pub fn draw(ui: &mut Ui, core: &mut Core, acts: &mut Acts) {
     let frame = if fullscreen {
         Frame::new().fill(Color32::BLACK)
     } else {
-        Frame::new().fill(BG0).inner_margin(Margin::same(16))
+        Frame::new().fill(BG0()).inner_margin(Margin::same(16))
     };
     let wanted = egui::CentralPanel::default()
         .frame(frame)
@@ -335,7 +335,7 @@ fn fullscreen_bar(
         .show(&ctx, |ui| {
             Frame::new()
                 .fill(Color32::from_black_alpha(0xc8))
-                .stroke(Stroke::new(1.0, BG3))
+                .stroke(Stroke::new(1.0, BG3()))
                 .corner_radius(CornerRadius::same(36))
                 .inner_margin(Margin::symmetric(14, 10))
                 .show(ui, |ui| {
@@ -480,8 +480,18 @@ fn tiles(
                     }
                     acts.later(move |c| c.voice.set_watching(uid, false));
                 }
+                if let Some((audio, keep)) = click.screen_audio {
+                    acts.later(move |c| c.set_person_audio(uid, audio, keep));
+                }
                 if click.watch {
                     acts.later(move |c| c.voice.set_watching(uid, true));
+                }
+                if click.stop_share {
+                    if here {
+                        set_zoom(ui.ctx(), cid, None);
+                        set_fullscreen(ui.ctx(), false);
+                    }
+                    acts.later(|c| c.voice.share(None));
                 }
                 if let Some(at) = click.menu {
                     open_person(acts, uid, at);
@@ -516,8 +526,14 @@ pub(super) struct TileClick {
     pub(super) fullscreen: bool,
     /// "Parar de assistir" over someone's screen.
     pub(super) stop: bool,
+    /// The mute button or the volume bar beside "Parar de assistir": how
+    /// loud their screen now plays here, and whether to write it down
+    /// (not on every step of the bar being dragged).
+    pub(super) screen_audio: Option<(crate::prefs::PersonAudio, bool)>,
     /// "Assistir transmissão" on a screen not watched.
     pub(super) watch: bool,
+    /// "Parar de compartilhar" on my own screen's tile.
+    pub(super) stop_share: bool,
 }
 
 /// A button over a video (`label` beside the icon, if any), dark so it
@@ -533,7 +549,7 @@ fn over_button(
     const H: f32 = 32.0;
     let galley = label.map(|l| {
         ui.painter()
-            .layout_no_wrap(l.to_owned(), theme::bold(13.0), TEXT)
+            .layout_no_wrap(l.to_owned(), theme::bold(13.0), TEXT())
     });
     let w = galley.as_ref().map_or(H, |g| H + g.size().x + 10.0);
     let rect = Rect::from_min_max(pos2(right.x - w, right.y - H), right);
@@ -548,7 +564,7 @@ fn over_button(
     };
     ui.painter()
         .rect_filled(rect, CornerRadius::same(RADIUS_MD), fill);
-    let ink = if resp.hovered() { TEXT } else { MUTED };
+    let ink = if resp.hovered() { TEXT() } else { MUTED() };
     let icon_at = Rect::from_center_size(
         pos2(rect.left() + H / 2.0, rect.center().y),
         Vec2::splat(icons::SIZE),
@@ -559,6 +575,60 @@ fn over_button(
         ui.painter().galley(at, g, ink);
     }
     resp
+}
+
+/// How wide `over_volume`'s bar is.
+const VOLUME_W: f32 = 120.0;
+
+/// A volume bar over a video, dark like `over_button` and as tall, its right
+/// edge at `right`: how loud someone's screen plays here, 0 to 200 %, with
+/// a mark at 100 %. Returns the new volume while it is clicked or dragged,
+/// and whether the change is done (released).
+fn over_volume(
+    ui: &mut Ui,
+    id: Id,
+    right: egui::Pos2,
+    audio: crate::prefs::PersonAudio,
+) -> Option<(f32, bool)> {
+    const H: f32 = 32.0;
+    const W: f32 = VOLUME_W;
+    const MAX: f32 = 2.0;
+    let rect = Rect::from_min_max(pos2(right.x - W, right.y - H), right);
+    let shown = if audio.screen_muted { 0.0 } else { audio.screen.clamp(0.0, MAX) };
+    let resp = ui
+        .interact(rect, id, Sense::click_and_drag())
+        .on_hover_cursor(CursorIcon::PointingHand)
+        .on_hover_text(format!("{} · {:.0} %", t!("modal.volume_stream"), shown * 100.0));
+    let busy = resp.hovered() || resp.dragged();
+    let fill = if busy {
+        Color32::from_black_alpha(0xf0)
+    } else {
+        Color32::from_black_alpha(0xb4)
+    };
+    let painter = ui.painter();
+    painter.rect_filled(rect, CornerRadius::same(RADIUS_MD), fill);
+    let track = Rect::from_center_size(rect.center(), vec2(W - 24.0, 4.0));
+    painter.rect_filled(track, CornerRadius::same(2), BG4());
+    let knob = pos2(track.left() + track.width() * shown / MAX, track.center().y);
+    painter.rect_filled(
+        Rect::from_min_max(track.min, pos2(knob.x, track.max.y)),
+        CornerRadius::same(2),
+        if audio.screen_muted { FAINT() } else { ACCENT() },
+    );
+    // Where 100 % is.
+    let mark = track.left() + track.width() / MAX;
+    painter.vline(mark, track.y_range().expand(3.0), Stroke::new(1.0, MUTED()));
+    painter.circle_filled(knob, if busy { 7.0 } else { 6.0 }, TEXT());
+    if !(resp.clicked() || resp.dragged() || resp.drag_stopped()) {
+        return None;
+    }
+    let x = resp.interact_pointer_pos()?.x;
+    let mut value = ((x - track.left()) / track.width()).clamp(0.0, 1.0) * MAX;
+    // The knob stops at 100 % a little, as in the person's menu.
+    if (value - 1.0).abs() < 0.04 {
+        value = 1.0;
+    }
+    Some((value, resp.drag_stopped() || resp.clicked()))
 }
 
 /// One person. `video`: their picture is shown, when there is one (it is
@@ -575,6 +645,9 @@ pub(super) fn tile(ui: &mut Ui, core: &Core, v: &VoiceUser, rect: Rect, video: b
     // Someone else's screen share, and whether I watch it.
     let their_screen = v.user_id != core.me_id() && v.video == Some(Video::Screen);
     let unwatched = their_screen && !core.voice.watching(v.user_id);
+    // My own screen is never shown to me: seeing it inside itself only
+    // repeats it without end (the tile says I share it, and how to stop).
+    let my_screen = v.user_id == core.me_id() && v.video == Some(Video::Screen);
     // Enlarged in fullscreen: edge to edge, with no rounded corners.
     let screen_rect = ui.ctx().content_rect();
     let edge_to_edge = is_fullscreen(ui.ctx()) && rect.width() >= screen_rect.width() - 1.0;
@@ -587,16 +660,16 @@ pub(super) fn tile(ui: &mut Ui, core: &Core, v: &VoiceUser, rect: Rect, video: b
     // rings that stop short of the corners so the rounding stays clean,
     // and cut at the tile's edge (a wide tile is shorter than they are
     // big), as the browser cut the gradient.
-    ui.painter().rect_filled(rect, radius, BG2);
+    ui.painter().rect_filled(rect, radius, BG2());
     let center = pos2(rect.center().x, rect.top() + rect.height() * 0.4);
     let reach = (rect.width().min(rect.height()) * 0.5 - 2.0).max(1.0);
     let rings = ui.painter_at(rect);
     let steps = 32;
     for i in 0..steps {
         let t = i as f32 / steps as f32;
-        rings.circle_filled(center, reach * (1.0 - t), theme::mix(BG2, BG3, t));
+        rings.circle_filled(center, reach * (1.0 - t), theme::mix(BG2(), BG3(), t));
     }
-    let frame = if video && v.video.is_some() {
+    let frame = if video && v.video.is_some() && !my_screen {
         core.voice.frame(v.user_id)
     } else {
         None
@@ -615,7 +688,8 @@ pub(super) fn tile(ui: &mut Ui, core: &Core, v: &VoiceUser, rect: Rect, video: b
             core.voice.frame_shown(v.user_id);
             // Edge to edge in fullscreen, a click changes nothing (the
             // floating bar has the way out), so none is lost by accident.
-            if !edge_to_edge {
+            // Not under a dialog: egui still lets the tip through.
+            if !edge_to_edge && core.modal.is_none() {
                 let resp = resp
                     .on_hover_cursor(CursorIcon::ZoomIn)
                     .on_hover_text(t!("stage.click_to_enlarge"));
@@ -646,6 +720,45 @@ pub(super) fn tile(ui: &mut Ui, core: &Core, v: &VoiceUser, rect: Rect, video: b
                     );
                     crate::smoke::target(|| format!("parar-de-assistir:{name}"), stop.rect);
                     click.stop = stop.clicked();
+                    // Beside it, how loud their screen plays here: mute,
+                    // and a volume bar (when the tile has room for them).
+                    let audio = core.person_audio(v.user_id);
+                    if rect.width() >= 320.0 {
+                        right.x = stop.rect.left() - 6.0;
+                        let id = Id::unique(("tile-mute", v.user_id));
+                        let (icon, tip) = if audio.screen_muted {
+                            (Icon::VolumeOff, t!("stage.unmute_stream"))
+                        } else {
+                            (Icon::Volume, t!("modal.mute_stream"))
+                        };
+                        let mute = over_button(ui, id, right, icon, None, tip);
+                        crate::smoke::target(|| format!("mutar-tela:{name}"), mute.rect);
+                        if mute.clicked() {
+                            click.screen_audio = Some((
+                                crate::prefs::PersonAudio {
+                                    screen_muted: !audio.screen_muted,
+                                    ..audio
+                                },
+                                true,
+                            ));
+                        }
+                        if rect.width() >= 440.0 {
+                            right.x = mute.rect.left() - 6.0;
+                            let id = Id::unique(("tile-volume", v.user_id));
+                            let bar = Rect::from_min_max(pos2(right.x - VOLUME_W, right.y - 32.0), right);
+                            crate::smoke::target(|| format!("volume-tela:{name}"), bar);
+                            if let Some((screen, keep)) = over_volume(ui, id, right, audio) {
+                                click.screen_audio = Some((
+                                    crate::prefs::PersonAudio {
+                                        screen,
+                                        screen_muted: false,
+                                        ..audio
+                                    },
+                                    keep,
+                                ));
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -654,14 +767,14 @@ pub(super) fn tile(ui: &mut Ui, core: &Core, v: &VoiceUser, rect: Rect, video: b
             let side = 84.0_f32.min(rect.height() * 0.6);
             // A screen not watched: who shares it, and the way back to it
             // (when the tile has room for the button).
-            let offer = unwatched && rect.height() >= 150.0;
+            let offer = (unwatched || my_screen) && rect.height() >= 150.0;
             let center = if offer {
                 rect.center() - vec2(0.0, 22.0)
             } else {
                 rect.center()
             };
             let av = Rect::from_center_size(center, Vec2::splat(side));
-            widgets::paint_avatar(ui, core, &u, av, false, BG3);
+            widgets::paint_avatar(ui, core, &u, av, false, BG3());
             if offer {
                 let row = Rect::from_center_size(
                     pos2(rect.center().x, av.bottom() + 26.0),
@@ -672,10 +785,18 @@ pub(super) fn tile(ui: &mut Ui, core: &Core, v: &VoiceUser, rect: Rect, video: b
                         .max_rect(row)
                         .layout(Layout::top_down(Align::Center)),
                 );
-                click.watch = Button::primary(t!("stage.watch_stream"))
-                    .small()
-                    .show(&mut child)
-                    .clicked();
+                if my_screen {
+                    let stop = Button::danger(t!("modal.stop_sharing_btn"))
+                        .small()
+                        .show(&mut child);
+                    crate::smoke::target(|| "parar-compartilhar".to_owned(), stop.rect);
+                    click.stop_share = stop.clicked();
+                } else {
+                    click.watch = Button::primary(t!("stage.watch_stream"))
+                        .small()
+                        .show(&mut child)
+                        .clicked();
+                }
             }
         }
     }
@@ -683,13 +804,16 @@ pub(super) fn tile(ui: &mut Ui, core: &Core, v: &VoiceUser, rect: Rect, video: b
         ui.painter().rect_stroke(
             rect,
             radius,
-            Stroke::new(3.0, ACCENT),
+            Stroke::new(3.0, ACCENT()),
             egui::StrokeKind::Inside,
         );
     }
     // The name tag at the bottom left: what they turned off, what I
     // silenced of them here, and whether they share a screen or present.
-    let mut label = u.name().to_owned();
+    let mut label = core
+        .current_server()
+        .map_or(u.name(), |s| s.name_of(&u))
+        .to_owned();
     if v.video == Some(Video::Screen) {
         label.push_str(if gains.screen == 0.0 {
             t!("stage.tag_screen_muted")
@@ -705,7 +829,7 @@ pub(super) fn tile(ui: &mut Ui, core: &Core, v: &VoiceUser, rect: Rect, video: b
     if presents {
         label.push_str(t!("stage.tag_presenting"));
     }
-    let galley = ui.painter().layout_no_wrap(label, theme::small(), TEXT);
+    let galley = ui.painter().layout_no_wrap(label, theme::small(), TEXT());
     let mut off = Vec::new();
     if v.deaf {
         off.push(Icon::HeadOff);
@@ -739,7 +863,7 @@ pub(super) fn tile(ui: &mut Ui, core: &Core, v: &VoiceUser, rect: Rect, video: b
     ui.painter().galley(
         pos2(x, tag.center().y - galley.size().y / 2.0),
         galley,
-        TEXT,
+        TEXT(),
     );
     let _ = Align2::LEFT_CENTER;
     click

@@ -28,7 +28,7 @@ pub fn approve_device(
             .char_limit(24)
             .desired_width(f32::INFINITY)
             .margin(Margin::symmetric(12, 9))
-            .background_color(BG0)
+            .background_color(BG0())
             .font(theme::body()),
     );
     if focus {
@@ -59,7 +59,7 @@ pub fn new_device(ui: &mut Ui, core: &Core, acts: &mut Acts) {
         ui.label(
             RichText::new(code)
                 .font(theme::bold(26.0))
-                .color(TEXT)
+                .color(TEXT())
                 .extra_letter_spacing(2.0),
         );
     });
@@ -127,10 +127,10 @@ pub fn number(ui: &mut Ui, core: &Core, uid: i64, acts: &mut Acts) {
         } else {
             t!("security.verified_no")
         })
-        .color(MUTED),
+        .color(MUTED()),
     );
     if core.e2e.in_record(uid) {
-        ui.label(RichText::new(tf!("security.in_record", name = name)).color(MUTED));
+        ui.label(RichText::new(tf!("security.in_record", name = name)).color(MUTED()));
     }
     foot(ui, |ui| {
         let label = if verified {
@@ -155,7 +155,7 @@ fn show_number(ui: &mut Ui, number: &str) {
             ui.label(
                 RichText::new(line.join("   "))
                     .font(egui::FontId::monospace(18.0))
-                    .color(TEXT),
+                    .color(TEXT()),
             );
         });
     }

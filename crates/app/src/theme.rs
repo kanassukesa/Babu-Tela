@@ -1,33 +1,167 @@
 //! The look of the app: the same indigo palette, type sizes and corner radii
 //! the stylesheet used, now set straight on egui.
 
-use std::sync::Arc;
+use std::sync::{Arc, PoisonError, RwLock};
 
 use egui::{
     Color32, Context, CornerRadius, FontData, FontDefinitions, FontFamily, FontId, Margin, Stroke,
     TextStyle, Visuals,
 };
 
-/// Indigo surfaces and a periwinkle-to-blue accent, taken from the app icon.
-pub const BG0: Color32 = Color32::from_rgb(0x0d, 0x0c, 0x1d);
-pub const BG1: Color32 = Color32::from_rgb(0x14, 0x13, 0x30);
-pub const BG2: Color32 = Color32::from_rgb(0x1a, 0x19, 0x39);
-pub const BG3: Color32 = Color32::from_rgb(0x25, 0x24, 0x50);
-pub const BG4: Color32 = Color32::from_rgb(0x34, 0x32, 0x67);
+/// The colours of the surfaces, the text and the accent. Indigo surfaces
+/// and a periwinkle-to-blue accent, taken from the app icon, unless a theme
+/// was picked in Configurações > Aparência (`set_palette`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Palette {
+    pub bg0: Color32,
+    pub bg1: Color32,
+    pub bg2: Color32,
+    pub bg3: Color32,
+    pub bg4: Color32,
+    pub text: Color32,
+    pub muted: Color32,
+    pub faint: Color32,
+    pub accent: Color32,
+    pub accent_2: Color32,
+    pub accent_ink: Color32,
+    /// The accent at 16% opacity, for mentions and the highlight behind
+    /// them.
+    pub accent_soft: Color32,
+    /// The two ends of the gradient the buttons used.
+    pub grad_a: Color32,
+    pub grad_b: Color32,
+}
 
-pub const TEXT: Color32 = Color32::from_rgb(0xec, 0xeb, 0xff);
-pub const MUTED: Color32 = Color32::from_rgb(0xa3, 0xa2, 0xc9);
-pub const FAINT: Color32 = Color32::from_rgb(0x71, 0x6f, 0x9f);
+impl Palette {
+    /// The app's own colours.
+    pub const INDIGO: Palette = Palette {
+        bg0: Color32::from_rgb(0x0d, 0x0c, 0x1d),
+        bg1: Color32::from_rgb(0x14, 0x13, 0x30),
+        bg2: Color32::from_rgb(0x1a, 0x19, 0x39),
+        bg3: Color32::from_rgb(0x25, 0x24, 0x50),
+        bg4: Color32::from_rgb(0x34, 0x32, 0x67),
+        text: Color32::from_rgb(0xec, 0xeb, 0xff),
+        muted: Color32::from_rgb(0xa3, 0xa2, 0xc9),
+        faint: Color32::from_rgb(0x71, 0x6f, 0x9f),
+        accent: Color32::from_rgb(0x85, 0x90, 0xff),
+        accent_2: Color32::from_rgb(0x57, 0x63, 0xee),
+        accent_ink: Color32::from_rgb(0x0d, 0x0c, 0x26),
+        accent_soft: Color32::from_rgba_premultiplied(0x15, 0x17, 0x29, 0x29),
+        grad_a: Color32::from_rgb(0xa6, 0xb0, 0xff),
+        grad_b: Color32::from_rgb(0x6c, 0x78, 0xf4),
+    };
 
-pub const ACCENT: Color32 = Color32::from_rgb(0x85, 0x90, 0xff);
-pub const ACCENT_2: Color32 = Color32::from_rgb(0x57, 0x63, 0xee);
-pub const ACCENT_INK: Color32 = Color32::from_rgb(0x0d, 0x0c, 0x26);
-/// The accent at 16% opacity, for mentions and the highlight behind them.
-pub const ACCENT_SOFT: Color32 = Color32::from_rgba_premultiplied(0x15, 0x17, 0x29, 0x29);
+    /// The palette for a theme: surfaces tinted with `base` (none: the
+    /// app's indigo), and `accent` for buttons, links and highlights (none:
+    /// the app's periwinkle). Whatever colour is picked, the surfaces stay
+    /// dark, so the text always reads: only the hue and how strong it is
+    /// come from `base`, and a little of how light.
+    pub fn new(base: Option<Color32>, accent: Option<Color32>) -> Palette {
+        let mut p = Palette::INDIGO;
+        if let Some(base) = base {
+            let (h, s, l) = to_hsl(base);
+            let s = s.min(0.6);
+            // From the indigo's ladder (0.08 to 0.30), moved down for black
+            // and up a little for a lighter pick.
+            let shift = (l - 0.08).clamp(-0.08, 0.08);
+            let step = |sat: f32, light: f32| from_hsl(h, s * sat, (light + shift).max(0.0));
+            p.bg0 = step(0.85, 0.08);
+            p.bg1 = step(0.9, 0.12);
+            p.bg2 = step(0.9, 0.155);
+            p.bg3 = step(0.85, 0.225);
+            p.bg4 = step(0.8, 0.30);
+            p.text = from_hsl(h, s.min(0.5), 0.96);
+            p.muted = from_hsl(h, s * 0.4, 0.72);
+            p.faint = from_hsl(h, s * 0.3, 0.53);
+        }
+        if let Some(a) = accent {
+            let (h, s, l) = to_hsl(a);
+            p.accent = a;
+            p.accent_2 = from_hsl(h, (s * 1.1).min(1.0), (l - 0.14).max(0.12));
+            p.grad_a = from_hsl(h, s, (l + 0.08).min(0.92));
+            p.grad_b = mix(a, p.accent_2, 0.5);
+            // The ink on the accent: dark on a light accent, white on a dark one.
+            p.accent_ink = if l > 0.5 {
+                from_hsl(h, 0.5, 0.08)
+            } else {
+                Color32::WHITE
+            };
+            let soft = |c: u8| (f32::from(c) * 0.16).round() as u8;
+            p.accent_soft = Color32::from_rgba_premultiplied(soft(a.r()), soft(a.g()), soft(a.b()), 0x29);
+        }
+        p
+    }
+}
 
-/// The two ends of the gradient the buttons used.
-pub const GRAD_A: Color32 = Color32::from_rgb(0xa6, 0xb0, 0xff);
-pub const GRAD_B: Color32 = Color32::from_rgb(0x6c, 0x78, 0xf4);
+static PALETTE: RwLock<Palette> = RwLock::new(Palette::INDIGO);
+
+/// Repaints the app in `p`: every colour below reads it, and the widgets'
+/// own colours are set again.
+pub fn set_palette(ctx: &Context, p: Palette) {
+    *PALETTE.write().unwrap_or_else(PoisonError::into_inner) = p;
+    ctx.all_styles_mut(|style| style.visuals = visuals());
+    ctx.request_repaint();
+}
+
+/// Hue (0 to 1), saturation and lightness.
+fn to_hsl(c: Color32) -> (f32, f32, f32) {
+    let [r, g, b] = [c.r(), c.g(), c.b()].map(|v| f32::from(v) / 255.0);
+    let max = r.max(g).max(b);
+    let min = r.min(g).min(b);
+    let l = (max + min) / 2.0;
+    if max - min < 1e-6 {
+        return (0.0, 0.0, l);
+    }
+    let d = max - min;
+    let s = if l > 0.5 { d / (2.0 - max - min) } else { d / (max + min) };
+    let h = if max == r {
+        (g - b) / d + if g < b { 6.0 } else { 0.0 }
+    } else if max == g {
+        (b - r) / d + 2.0
+    } else {
+        (r - g) / d + 4.0
+    };
+    (h / 6.0, s, l)
+}
+
+fn from_hsl(h: f32, s: f32, l: f32) -> Color32 {
+    let l = l.clamp(0.0, 1.0);
+    let s = s.clamp(0.0, 1.0);
+    let q = if l < 0.5 { l * (1.0 + s) } else { l + s - l * s };
+    let p = 2.0 * l - q;
+    let hue = |mut t: f32| {
+        t = t.rem_euclid(1.0);
+        let v = if t < 1.0 / 6.0 {
+            p + (q - p) * 6.0 * t
+        } else if t < 0.5 {
+            q
+        } else if t < 2.0 / 3.0 {
+            p + (q - p) * (2.0 / 3.0 - t) * 6.0
+        } else {
+            p
+        };
+        (v * 255.0).round() as u8
+    };
+    Color32::from_rgb(hue(h + 1.0 / 3.0), hue(h), hue(h - 1.0 / 3.0))
+}
+
+// The palette's colours, by the names the stylesheet gave them.
+macro_rules! colours {
+    ($($name:ident: $field:ident),* $(,)?) => {$(
+        #[allow(non_snake_case)]
+        #[inline]
+        pub fn $name() -> Color32 {
+            PALETTE.read().unwrap_or_else(PoisonError::into_inner).$field
+        }
+    )*};
+}
+
+colours! {
+    BG0: bg0, BG1: bg1, BG2: bg2, BG3: bg3, BG4: bg4,
+    TEXT: text, MUTED: muted, FAINT: faint,
+    ACCENT: accent, ACCENT_2: accent_2, ACCENT_INK: accent_ink, ACCENT_SOFT: accent_soft,
+    GRAD_A: grad_a, GRAD_B: grad_b,
+}
 
 pub const ONLINE: Color32 = Color32::from_rgb(0x43, 0xd3, 0x9e);
 pub const DANGER: Color32 = Color32::from_rgb(0xf2, 0x5f, 0x7a);
@@ -252,18 +386,18 @@ pub fn apply(ctx: &Context) {
 
 fn visuals() -> Visuals {
     let mut visuals = Visuals::dark();
-    visuals.override_text_color = Some(TEXT);
-    visuals.panel_fill = BG2;
-    visuals.window_fill = BG2;
-    visuals.extreme_bg_color = BG0;
-    visuals.faint_bg_color = BG3;
-    visuals.code_bg_color = BG0;
-    visuals.hyperlink_color = ACCENT;
+    visuals.override_text_color = Some(TEXT());
+    visuals.panel_fill = BG2();
+    visuals.window_fill = BG2();
+    visuals.extreme_bg_color = BG0();
+    visuals.faint_bg_color = BG3();
+    visuals.code_bg_color = BG0();
+    visuals.hyperlink_color = ACCENT();
     visuals.warn_fg_color = WARN;
     visuals.error_fg_color = DANGER;
     visuals.window_corner_radius = CornerRadius::same(14);
     visuals.menu_corner_radius = CornerRadius::same(RADIUS);
-    visuals.window_stroke = Stroke::new(1.0, BG4);
+    visuals.window_stroke = Stroke::new(1.0, BG4());
     visuals.window_shadow = egui::epaint::Shadow {
         offset: [0, 10],
         blur: 30,
@@ -271,42 +405,42 @@ fn visuals() -> Visuals {
         color: Color32::from_black_alpha(0xa0),
     };
     visuals.popup_shadow = visuals.window_shadow;
-    visuals.selection.bg_fill = ACCENT_2;
-    visuals.selection.stroke = Stroke::new(1.0, TEXT);
+    visuals.selection.bg_fill = ACCENT_2();
+    visuals.selection.stroke = Stroke::new(1.0, TEXT());
 
     // Buttons and fields: flat surfaces that lift a shade on hover, which is
     // what the stylesheet did.
     let w = &mut visuals.widgets;
-    w.noninteractive.bg_fill = BG2;
-    w.noninteractive.weak_bg_fill = BG2;
-    w.noninteractive.bg_stroke = Stroke::new(1.0, BG3);
-    w.noninteractive.fg_stroke = Stroke::new(1.0, MUTED);
+    w.noninteractive.bg_fill = BG2();
+    w.noninteractive.weak_bg_fill = BG2();
+    w.noninteractive.bg_stroke = Stroke::new(1.0, BG3());
+    w.noninteractive.fg_stroke = Stroke::new(1.0, MUTED());
     w.noninteractive.corner_radius = CornerRadius::same(RADIUS_MD);
 
-    w.inactive.bg_fill = BG3;
-    w.inactive.weak_bg_fill = BG3;
+    w.inactive.bg_fill = BG3();
+    w.inactive.weak_bg_fill = BG3();
     w.inactive.bg_stroke = Stroke::NONE;
-    w.inactive.fg_stroke = Stroke::new(1.0, MUTED);
+    w.inactive.fg_stroke = Stroke::new(1.0, MUTED());
     w.inactive.corner_radius = CornerRadius::same(RADIUS_MD);
 
-    w.hovered.bg_fill = BG4;
-    w.hovered.weak_bg_fill = BG4;
+    w.hovered.bg_fill = BG4();
+    w.hovered.weak_bg_fill = BG4();
     w.hovered.bg_stroke = Stroke::NONE;
-    w.hovered.fg_stroke = Stroke::new(1.0, TEXT);
+    w.hovered.fg_stroke = Stroke::new(1.0, TEXT());
     w.hovered.corner_radius = CornerRadius::same(RADIUS_MD);
     w.hovered.expansion = 0.0;
 
-    w.active.bg_fill = ACCENT_2;
-    w.active.weak_bg_fill = ACCENT_2;
+    w.active.bg_fill = ACCENT_2();
+    w.active.weak_bg_fill = ACCENT_2();
     w.active.bg_stroke = Stroke::NONE;
-    w.active.fg_stroke = Stroke::new(1.0, TEXT);
+    w.active.fg_stroke = Stroke::new(1.0, TEXT());
     w.active.corner_radius = CornerRadius::same(RADIUS_MD);
     w.active.expansion = 0.0;
 
-    w.open.bg_fill = BG4;
-    w.open.weak_bg_fill = BG4;
+    w.open.bg_fill = BG4();
+    w.open.weak_bg_fill = BG4();
     w.open.bg_stroke = Stroke::NONE;
-    w.open.fg_stroke = Stroke::new(1.0, TEXT);
+    w.open.fg_stroke = Stroke::new(1.0, TEXT());
     w.open.corner_radius = CornerRadius::same(RADIUS_MD);
 
     visuals
@@ -347,7 +481,7 @@ pub fn status_color(status: crate::model::Status) -> Color32 {
         Status::Online => ONLINE,
         Status::Idle => WARN,
         Status::Dnd => DANGER,
-        Status::Invisible | Status::Offline => FAINT,
+        Status::Invisible | Status::Offline => FAINT(),
     }
 }
 
@@ -364,16 +498,16 @@ mod tests {
 
     #[test]
     fn reads_the_colours_the_server_sends() {
-        assert_eq!(parse_hex("#8590ff"), Some(ACCENT));
-        assert_eq!(parse_hex("8590FF"), Some(ACCENT));
-        assert_eq!(parse_hex("  #8590ff  "), Some(ACCENT));
+        assert_eq!(parse_hex("#8590ff"), Some(ACCENT()));
+        assert_eq!(parse_hex("8590FF"), Some(ACCENT()));
+        assert_eq!(parse_hex("  #8590ff  "), Some(ACCENT()));
         assert_eq!(parse_hex("#fff"), Some(Color32::WHITE));
         assert_eq!(parse_hex("#000"), Some(Color32::BLACK));
         assert_eq!(parse_hex(""), None);
         assert_eq!(parse_hex("#12345"), None);
         assert_eq!(parse_hex("#zzzzzz"), None);
-        assert_eq!(color_or("", ACCENT), ACCENT);
-        assert_eq!(color_or("#43d39e", ACCENT), ONLINE);
+        assert_eq!(color_or("", ACCENT()), ACCENT());
+        assert_eq!(color_or("#43d39e", ACCENT()), ONLINE);
     }
 
     #[test]
@@ -382,15 +516,15 @@ mod tests {
         assert_eq!(status_color(Status::Online), ONLINE);
         assert_eq!(status_color(Status::Idle), WARN);
         assert_eq!(status_color(Status::Dnd), DANGER);
-        assert_eq!(status_color(Status::Invisible), FAINT);
-        assert_eq!(status_color(Status::Offline), FAINT);
+        assert_eq!(status_color(Status::Invisible), FAINT());
+        assert_eq!(status_color(Status::Offline), FAINT());
     }
 
     #[test]
     fn mixing_reaches_both_ends() {
-        assert_eq!(mix(GRAD_A, GRAD_B, 0.0), GRAD_A);
-        assert_eq!(mix(GRAD_A, GRAD_B, 1.0), GRAD_B);
-        assert_eq!(mix(GRAD_A, GRAD_B, -5.0), GRAD_A);
+        assert_eq!(mix(GRAD_A(), GRAD_B(), 0.0), GRAD_A());
+        assert_eq!(mix(GRAD_A(), GRAD_B(), 1.0), GRAD_B());
+        assert_eq!(mix(GRAD_A(), GRAD_B(), -5.0), GRAD_A());
         let middle = mix(Color32::BLACK, Color32::WHITE, 0.5);
         assert_eq!(middle, Color32::from_rgb(127, 127, 127));
     }

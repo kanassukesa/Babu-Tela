@@ -49,7 +49,7 @@ fn rail_button(ui: &mut Ui, id: Id, on: bool, unread: bool, tip: &str) -> (Rect,
                 ne: 4,
                 se: 4,
             },
-            TEXT,
+            TEXT(),
         );
     }
     (rect, resp)
@@ -72,9 +72,9 @@ pub fn rail(ui: &mut Ui, core: &mut Core, acts: &mut Acts) {
             let (rect, resp) =
                 rail_button(ui, Id::unique("rail-home"), home, false, t!("rail.dms"));
             let lit = home || resp.hovered();
-            paint_square(ui, rect, lit, if lit { ACCENT } else { BG3 });
+            paint_square(ui, rect, lit, if lit { ACCENT() } else { BG3() });
             Icon::Chat
-                .image(icons::SIZE, if lit { ACCENT_INK } else { TEXT })
+                .image(icons::SIZE, if lit { ACCENT_INK() } else { TEXT() })
                 .paint_at(
                     ui,
                     Rect::from_center_size(rect.center(), Vec2::splat(icons::SIZE)),
@@ -84,7 +84,7 @@ pub fn rail(ui: &mut Ui, core: &mut Core, acts: &mut Acts) {
                     ui,
                     rect.right_bottom() - vec2(5.0, 5.0),
                     dm_hot + pending,
-                    Some(BG0),
+                    Some(BG0()),
                 );
             }
             if resp.clicked() {
@@ -95,7 +95,7 @@ pub fn rail(ui: &mut Ui, core: &mut Core, acts: &mut Acts) {
             ui.painter().rect_filled(
                 Rect::from_center_size(sep.center(), vec2(30.0, 2.0)),
                 CornerRadius::same(1),
-                BG3,
+                BG3(),
             );
             // The servers.
             for s in &core.servers {
@@ -105,7 +105,7 @@ pub fn rail(ui: &mut Ui, core: &mut Core, acts: &mut Acts) {
                     rail_button(ui, Id::unique(("rail-srv", s.id)), on, any && !on, &s.name);
                 crate::smoke::target(|| format!("servidor:{}", s.name), rect);
                 let lit = on || resp.hovered();
-                let color = theme::color_or(&s.color, ACCENT);
+                let color = theme::color_or(&s.color, ACCENT());
                 widgets::paint_server(
                     ui,
                     core,
@@ -113,11 +113,11 @@ pub fn rail(ui: &mut Ui, core: &mut Core, acts: &mut Acts) {
                     &s.initials(),
                     rect,
                     square_radius(lit),
-                    if lit { color } else { BG3 },
-                    if lit { ACCENT_INK } else { TEXT },
+                    if lit { color } else { BG3() },
+                    if lit { ACCENT_INK() } else { TEXT() },
                 );
                 if hot > 0 {
-                    widgets::badge_at(ui, rect.right_bottom() - vec2(5.0, 5.0), hot, Some(BG0));
+                    widgets::badge_at(ui, rect.right_bottom() - vec2(5.0, 5.0), hot, Some(BG0()));
                 }
                 if resp.clicked() {
                     let id = s.id;
@@ -125,6 +125,18 @@ pub fn rail(ui: &mut Ui, core: &mut Core, acts: &mut Acts) {
                         c.go_to(View::Server {
                             server: id,
                             channel: None,
+                        })
+                    });
+                }
+                // A right click: its menu (read, silence, notifications).
+                if resp.secondary_clicked() {
+                    let at = resp.interact_pointer_pos().unwrap_or(rect.right_top());
+                    let anchor = Rect::from_min_size(at, Vec2::ZERO);
+                    let id = s.id;
+                    acts.later(move |c| {
+                        c.pop = Some(Pop {
+                            kind: PopKind::RailMenu(id),
+                            anchor,
                         })
                     });
                 }
@@ -140,12 +152,12 @@ pub fn rail(ui: &mut Ui, core: &mut Core, acts: &mut Acts) {
             if resp.hovered() {
                 widgets::paint_gradient(ui, rect, CornerRadius::same(12), 1.0);
             } else {
-                ui.painter().rect_filled(rect, CornerRadius::same(16), BG2);
+                ui.painter().rect_filled(rect, CornerRadius::same(16), BG2());
             }
             Icon::Plus
                 .image(
                     icons::SIZE,
-                    if resp.hovered() { ACCENT_INK } else { ACCENT },
+                    if resp.hovered() { ACCENT_INK() } else { ACCENT() },
                 )
                 .paint_at(
                     ui,
@@ -184,7 +196,7 @@ fn row(ui: &mut Ui, id: Id, on: bool, height: f32) -> (Rect, Response) {
         .on_hover_cursor(CursorIcon::PointingHand);
     let radius = CornerRadius::same(RADIUS_SM);
     if on {
-        ui.painter().rect_filled(rect, radius, BG3);
+        ui.painter().rect_filled(rect, radius, BG3());
         ui.painter().rect_filled(
             Rect::from_min_size(rect.min, vec2(2.0, rect.height())),
             CornerRadius {
@@ -193,12 +205,12 @@ fn row(ui: &mut Ui, id: Id, on: bool, height: f32) -> (Rect, Response) {
                 ne: 0,
                 se: 0,
             },
-            ACCENT,
+            ACCENT(),
         );
     } else if ui.rect_contains_pointer(rect) {
         // Lit under a button of the row too (a channel's gear), which takes
         // the hover from it.
-        ui.painter().rect_filled(rect, radius, BG2);
+        ui.painter().rect_filled(rect, radius, BG2());
     }
     (rect, resp)
 }
@@ -225,7 +237,7 @@ pub fn sidebar(ui: &mut Ui, core: &mut Core, acts: &mut Acts) {
         .show_separator_line(false)
         .frame(
             Frame::new()
-                .fill(BG0)
+                .fill(BG0())
                 .inner_margin(Margin::symmetric(12, 10)),
         )
         .show(ui, |ui| user_panel(ui, core, acts));
@@ -235,7 +247,7 @@ pub fn sidebar(ui: &mut Ui, core: &mut Core, acts: &mut Acts) {
             .show_separator_line(false)
             .frame(
                 Frame::new()
-                    .fill(BG2)
+                    .fill(BG2())
                     .inner_margin(Margin::symmetric(12, 10)),
             )
             .show(ui, |ui| voice_panel(ui, core, acts));
@@ -265,14 +277,14 @@ pub fn sidebar(ui: &mut Ui, core: &mut Core, acts: &mut Acts) {
 fn side_head(ui: &mut Ui, core: &mut Core, acts: &mut Acts) {
     let full = ui.max_rect();
     ui.painter()
-        .hline(full.x_range(), full.bottom() - 0.5, Stroke::new(1.0, BG0));
+        .hline(full.x_range(), full.bottom() - 0.5, Stroke::new(1.0, BG0()));
     let Some(s) = core.current_server() else {
         ui.painter().text(
             pos2(full.left() + 14.0, full.center().y),
             Align2::LEFT_CENTER,
             t!("rail.dms"),
             theme::bold(15.0),
-            TEXT,
+            TEXT(),
         );
         return;
     };
@@ -281,7 +293,7 @@ fn side_head(ui: &mut Ui, core: &mut Core, acts: &mut Acts) {
         .on_hover_cursor(CursorIcon::PointingHand);
     crate::smoke::target(|| "cabecalho".into(), full);
     if resp.hovered() {
-        ui.painter().rect_filled(full, CornerRadius::ZERO, BG2);
+        ui.painter().rect_filled(full, CornerRadius::ZERO, BG2());
     }
     // What waits on the moderation: reports, and people asking to come in.
     let reports = if s.can(P_MANAGE_MESSAGES) {
@@ -290,7 +302,15 @@ fn side_head(ui: &mut Ui, core: &mut Core, acts: &mut Acts) {
         0
     } + s.requests.len() as u32;
     let mut right = full.right() - 14.0;
-    Icon::Down.image(icons::SIZE, MUTED).paint_at(
+    let open = matches!(
+        core.pop,
+        Some(Pop {
+            kind: PopKind::ServerMenu,
+            ..
+        })
+    );
+    let arrow = if open { Icon::Up } else { Icon::Down };
+    arrow.image(icons::SIZE, MUTED()).paint_at(
         ui,
         Rect::from_center_size(pos2(right - 9.0, full.center().y), Vec2::splat(icons::SIZE)),
     );
@@ -299,7 +319,7 @@ fn side_head(ui: &mut Ui, core: &mut Core, acts: &mut Acts) {
         widgets::badge_at(ui, pos2(right - 10.0, full.center().y), reports, None);
         right -= 28.0;
     }
-    row_text(ui, full, full.left() + 14.0, right, &s.name, TEXT, true);
+    row_text(ui, full, full.left() + 14.0, right, &s.name, TEXT(), true);
     if resp.clicked() {
         let anchor = full;
         acts.later(move |c| {
@@ -322,7 +342,7 @@ fn conversations(ui: &mut Ui, core: &mut Core, acts: &mut Acts) {
     let pending = core.pending_friends() as u32;
     let on = core.view == View::HOME;
     let (rect, resp) = row(ui, Id::unique("row-friends"), on, 34.0);
-    let color = if on || resp.hovered() { TEXT } else { MUTED };
+    let color = if on || resp.hovered() { TEXT() } else { MUTED() };
     Icon::Users.image(icons::SIZE, color).paint_at(
         ui,
         Rect::from_center_size(
@@ -353,7 +373,7 @@ fn conversations(ui: &mut Ui, core: &mut Core, acts: &mut Acts) {
     if core.dms.is_empty() {
         ui.label(
             egui::RichText::new(t!("nav.no_conversations"))
-                .color(FAINT)
+                .color(FAINT())
                 .size(12.0),
         );
     }
@@ -367,7 +387,7 @@ fn conversations(ui: &mut Ui, core: &mut Core, acts: &mut Acts) {
         let lit = on || resp.hovered() || unread.is_some();
         let av =
             Rect::from_center_size(pos2(rect.left() + 22.0, rect.center().y), Vec2::splat(28.0));
-        widgets::paint_avatar(ui, core, &d.user, av, true, if on { BG3 } else { BG1 });
+        widgets::paint_avatar(ui, core, &d.user, av, true, if on { BG3() } else { BG1() });
         let mut right = rect.right() - 8.0;
         if let Some(u) = unread {
             widgets::badge_at(ui, pos2(right - 10.0, rect.center().y), u.n, None);
@@ -379,7 +399,7 @@ fn conversations(ui: &mut Ui, core: &mut Core, acts: &mut Acts) {
             rect.left() + 44.0,
             right,
             d.user.name(),
-            if lit { TEXT } else { MUTED },
+            if lit { TEXT() } else { MUTED() },
             unread.is_some(),
         );
         if resp.clicked() {
@@ -394,13 +414,14 @@ fn channels(ui: &mut Ui, core: &mut Core, acts: &mut Acts) {
     let Some(s) = core.current_server() else {
         return;
     };
-    let mut cats: Vec<(&str, Vec<&Channel>)> = Vec::new();
-    for c in &s.channels {
-        let k = c.category_name();
-        match cats.iter_mut().find(|(name, _)| *name == k) {
-            Some((_, list)) => list.push(c),
-            None => cats.push((k, vec![c])),
+    // Silenced channels left out, when this server was set to.
+    let hide = core.hides_muted(s.id);
+    let mut cats = s.by_category();
+    if hide {
+        for (_, list) in &mut cats {
+            list.retain(|c| !core.channel_muted(c.id) || core.view.channel() == Some(c.id));
         }
+        cats.retain(|(_, list)| !list.is_empty());
     }
     if cats.is_empty() {
         widgets::caption(ui, t!("nav.no_channels"));
@@ -457,8 +478,17 @@ fn channel_row(ui: &mut Ui, core: &Core, s: &Server, c: &Channel, manage: bool, 
     // (every other frame), so its click was lost.
     let inside = ui.rect_contains_pointer(rect);
     crate::smoke::target(|| format!("canal:{}", c.label()), rect);
-    let lit = on || inside || unread.is_some();
-    let color = if lit { TEXT } else { MUTED };
+    // Silenced here: faded, and what is unread there does not light it.
+    let muted = core.channel_muted(c.id) || core.server_muted(s.id);
+    let fresh = unread.is_some() && !muted;
+    let lit = on || inside || fresh;
+    let color = if lit {
+        TEXT()
+    } else if muted {
+        FAINT()
+    } else {
+        MUTED()
+    };
     Icon::for_channel(c.kind)
         .image(icons::SIZE, color)
         .paint_at(
@@ -477,7 +507,7 @@ fn channel_row(ui: &mut Ui, core: &Core, s: &Server, c: &Channel, manage: bool, 
             .on_hover_text(t!("channel.edit"));
         crate::smoke::target(|| format!("engrenagem:{}", c.label()), gear);
         Icon::Gear
-            .image(16.0, if g.hovered() { TEXT } else { MUTED })
+            .image(16.0, if g.hovered() { TEXT() } else { MUTED() })
             .paint_at(ui, gear.shrink(1.0));
         if g.clicked() {
             gear_clicked = true;
@@ -492,15 +522,29 @@ fn channel_row(ui: &mut Ui, core: &Core, s: &Server, c: &Channel, manage: bool, 
         widgets::badge_at(ui, pos2(right - 10.0, rect.center().y), u.hot, None);
         right -= 26.0;
     }
-    row_text(
-        ui,
-        rect,
-        rect.left() + 34.0,
-        right,
-        c.label(),
-        color,
-        unread.is_some(),
-    );
+    if core.channel_muted(c.id) && !inside {
+        Icon::BellOff.image(icons::SMALL, FAINT()).paint_at(
+            ui,
+            Rect::from_center_size(
+                pos2(right - 9.0, rect.center().y),
+                Vec2::splat(icons::SMALL),
+            ),
+        );
+        right -= 22.0;
+    }
+    row_text(ui, rect, rect.left() + 34.0, right, c.label(), color, fresh);
+    // A right click: the channel's own menu, where the pointer is.
+    if resp.secondary_clicked() {
+        let at = resp.interact_pointer_pos().unwrap_or(rect.left_bottom());
+        let anchor = Rect::from_min_size(at, Vec2::ZERO);
+        let cid = c.id;
+        acts.later(move |core| {
+            core.pop = Some(Pop {
+                kind: PopKind::ChannelMenu(cid),
+                anchor,
+            })
+        });
+    }
     // Clicking the gear must not also open the channel.
     if resp.clicked() && !gear_clicked {
         let (sid, cid) = (s.id, c.id);
@@ -520,7 +564,7 @@ fn channel_row(ui: &mut Ui, core: &Core, s: &Server, c: &Channel, manage: bool, 
                 pos2(r.left() + 30.0 + 11.0, r.center().y),
                 Vec2::splat(22.0),
             );
-            widgets::paint_avatar(ui, core, &u, av, false, BG1);
+            widgets::paint_avatar(ui, core, &u, av, false, BG1());
             let mut right = r.right() - 6.0;
             if core.voice.gains(v.user_id).voice == 0.0 {
                 Icon::VolumeOff.image(icons::SMALL, DANGER).paint_at(
@@ -555,7 +599,7 @@ fn channel_row(ui: &mut Ui, core: &Core, s: &Server, c: &Channel, manage: bool, 
                 } else {
                     Icon::Video
                 };
-                icon.image(icons::SMALL, MUTED).paint_at(
+                icon.image(icons::SMALL, MUTED()).paint_at(
                     ui,
                     Rect::from_center_size(
                         pos2(right - 7.0, r.center().y),
@@ -565,9 +609,9 @@ fn channel_row(ui: &mut Ui, core: &Core, s: &Server, c: &Channel, manage: bool, 
                 right -= 20.0;
             }
             let mut job = egui::text::LayoutJob::simple_singleline(
-                u.name().to_owned(),
+                s.name_of(&u).to_owned(),
                 theme::small(),
-                MUTED,
+                MUTED(),
             );
             job.wrap =
                 egui::text::TextWrapping::truncate_at_width((right - av.right() - 8.0).max(10.0));
@@ -575,7 +619,7 @@ fn channel_row(ui: &mut Ui, core: &Core, s: &Server, c: &Channel, manage: bool, 
             ui.painter().galley(
                 pos2(av.right() + 8.0, r.center().y - galley.size().y / 2.0),
                 galley,
-                MUTED,
+                MUTED(),
             );
         }
     }
@@ -730,16 +774,16 @@ fn voice_panel(ui: &mut Ui, core: &mut Core, acts: &mut Acts) {
     ui.painter().hline(
         ui.max_rect().x_range().expand(12.0),
         top,
-        Stroke::new(1.0, BG0),
+        Stroke::new(1.0, BG0()),
     );
     let resp = ui
         .vertical(|ui| {
             ui.label(
                 egui::RichText::new(t!("call.connected"))
                     .font(theme::bold(13.0))
-                    .color(ACCENT),
+                    .color(ACCENT()),
             );
-            widgets::ellipsis(ui, &place, theme::small(), MUTED);
+            widgets::ellipsis(ui, &place, theme::small(), MUTED());
         })
         .response
         .interact(Sense::click())
@@ -767,12 +811,12 @@ fn user_panel(ui: &mut Ui, core: &mut Core, acts: &mut Acts) {
         ui.spacing_mut().item_spacing.x = 10.0;
         let mut shown = me.clone();
         shown.status = me.status.public();
-        widgets::avatar(ui, core, &shown, 34.0, true, BG0);
+        widgets::avatar(ui, core, &shown, 34.0, true, BG0());
         ui.vertical(|ui| {
             ui.set_width((ui.available_width() - room).max(24.0));
             ui.spacing_mut().item_spacing.y = 0.0;
-            widgets::ellipsis(ui, me.name(), theme::bold(14.0), TEXT);
-            widgets::ellipsis(ui, me.status.label(), theme::tiny(), MUTED);
+            widgets::ellipsis(ui, me.name(), theme::bold(14.0), TEXT());
+            widgets::ellipsis(ui, me.status.label(), theme::tiny(), MUTED());
         });
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
             ui.spacing_mut().item_spacing.x = 2.0;

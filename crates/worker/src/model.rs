@@ -263,7 +263,7 @@ impl State {
         let perms = self.perms_for(&srv, uid, 0)?;
         let mut members = Vec::new();
         for u in self.db.all(
-            "SELECT u.*, m.certs AS member_certs FROM members m JOIN users u ON u.id = m.user_id WHERE m.server_id = ? ORDER BY u.display_name COLLATE NOCASE",
+            "SELECT u.*, m.certs AS member_certs, m.nick AS member_nick FROM members m JOIN users u ON u.id = m.user_id WHERE m.server_id = ? ORDER BY u.display_name COLLATE NOCASE",
             params![sid],
         )? {
             let mut m = self.with_status(Some(&u));
@@ -271,6 +271,8 @@ impl State {
             m["roles"] = json!(ids(&roles, "role_id"));
             // Who let them in, signed (crates/app/src/e2e/members.rs).
             m["certs"] = crate::e2e::certs_of(u.str("member_certs"));
+            // Their nickname here, if they gave one.
+            m["nick"] = u.val("member_nick");
             members.push(m);
         }
         let mut voice = serde_json::Map::new();

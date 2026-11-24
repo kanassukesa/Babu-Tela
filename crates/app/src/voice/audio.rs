@@ -1423,6 +1423,7 @@ where
     T: SizedSample + FromSample<f32> + Send + 'static,
 {
     let shared = playback.shared.clone();
+    let silent = crate::sounds::test_silent();
     device
         .build_output_stream::<T, _, _>(
             config,
@@ -1433,6 +1434,9 @@ where
                 let ahead = ts.playback.duration_since(ts.callback).as_secs_f64() * 1000.0;
                 crate::probe::record("voz.saida", ahead);
                 playback.fill(data, ahead);
+                if silent {
+                    data.fill(T::EQUILIBRIUM);
+                }
             },
             move |err: cpal::Error| shared.device_error(&err),
             None,

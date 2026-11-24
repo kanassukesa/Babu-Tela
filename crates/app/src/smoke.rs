@@ -569,6 +569,92 @@ impl Smoke {
                 };
             }
             ("open", "settings") => core.open_settings(),
+            // aba-config:<key> opens that section of Configurações
+            // (core.rs `SettingsTab::key`).
+            ("aba-config", key) => {
+                if let Some(crate::core::Modal::Settings { tab, .. }) = &mut core.modal
+                    && let Some(t) = crate::core::SettingsTab::ALL.iter().find(|t| t.key() == key)
+                {
+                    *tab = *t;
+                }
+            }
+            // config-servidor:<key> opens the settings of the server on
+            // screen at that section (core.rs `ServerTab::key`).
+            ("config-servidor", key) => {
+                if let Some(sid) = core.view.server()
+                    && let Some(t) = crate::core::ServerTab::ALL.iter().find(|t| t.key() == key)
+                {
+                    core.open_server_settings_at(sid, *t);
+                }
+            }
+            // silenciar-canal:<name> silences (or not) a channel of the
+            // server on screen, as its right-click menu does.
+            ("silenciar-canal", name) => {
+                let cid = core
+                    .current_server()
+                    .and_then(|s| s.channels.iter().find(|c| c.label() == name))
+                    .map(|c| c.id);
+                if let Some(cid) = cid {
+                    core.toggle_mute_channel(cid);
+                }
+            }
+            // apelido:<text> saves my nickname in the server on screen
+            // (empty: my name again).
+            ("apelido", nick) => {
+                if let Some(sid) = core.view.server() {
+                    if let Some(crate::core::Modal::Nick { nick: field, .. }) = &mut core.modal {
+                        *field = nick.to_owned();
+                    }
+                    core.set_nick(sid, nick.to_owned());
+                }
+            }
+            // menu-canal:<name> opens a channel's right-click menu, under
+            // its row.
+            ("menu-canal", name) => {
+                let cid = core
+                    .current_server()
+                    .and_then(|s| s.channels.iter().find(|c| c.label() == name))
+                    .map(|c| c.id);
+                let anchor = target_rect(&format!("canal:{name}"));
+                if let (Some(cid), Some(rect)) = (cid, anchor) {
+                    core.pop = Some(crate::core::Pop {
+                        kind: crate::core::PopKind::ChannelMenu(cid),
+                        anchor: egui::Rect::from_min_size(rect.center(), egui::Vec2::ZERO),
+                    });
+                }
+            }
+            // menu-trilho opens the server's menu in the rail, by
+            // the server on screen.
+            ("menu-trilho", _) => {
+                let anchor = core
+                    .current_server()
+                    .and_then(|s| target_rect(&format!("servidor:{}", s.name)));
+                if let (Some(sid), Some(rect)) = (core.view.server(), anchor) {
+                    core.pop = Some(crate::core::Pop {
+                        kind: crate::core::PopKind::RailMenu(sid),
+                        anchor: egui::Rect::from_min_size(rect.center(), egui::Vec2::ZERO),
+                    });
+                }
+            }
+            ("open", "notificacoes") => {
+                if let Some(sid) = core.view.server() {
+                    core.open_notify_settings(sid);
+                }
+            }
+            ("open", "apelido") => {
+                if let Some(sid) = core.view.server() {
+                    core.open_nick(sid);
+                }
+            }
+            // tema:<base>:<accent>, each a hex colour or "-" for the app's
+            // own: the theme Configurações > Aparência sets.
+            ("tema", rest) => {
+                let rgb = |v: &str| {
+                    crate::theme::parse_hex(v).map(|c| [c.r(), c.g(), c.b()])
+                };
+                let (base, accent) = rest.split_once(':').unwrap_or((rest, "-"));
+                core.set_theme(rgb(base), rgb(accent));
+            }
             ("open", "music") => core.open_music(),
             // "Continuar com o Google" on the sign-in card. With
             // BABUTELA_GOOGLE_AUTH_URL, a fake Google answers instead of the
@@ -1759,6 +1845,8 @@ fn modal_name(m: &Modal) -> &'static str {
         Modal::Invite { .. } => "invite",
         Modal::Ttl { .. } => "ttl",
         Modal::ServerSettings { .. } => "server-settings",
+        Modal::Notify { .. } => "notify",
+        Modal::Nick { .. } => "nick",
         Modal::Profile { .. } => "profile",
         Modal::Settings { .. } => "settings",
         Modal::Report { .. } => "report",

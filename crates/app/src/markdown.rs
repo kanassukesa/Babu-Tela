@@ -303,7 +303,7 @@ pub fn show(
             Piece::Pre(code) => {
                 flush(ui, &mut runs, &mut click);
                 egui::Frame::new()
-                    .fill(BG0)
+                    .fill(BG0())
                     .corner_radius(CornerRadius::same(RADIUS_SM))
                     .inner_margin(egui::Margin::same(10))
                     .outer_margin(egui::Margin::symmetric(0, 4))
@@ -311,7 +311,7 @@ pub fn show(
                         ui.set_width(ui.available_width());
                         ui.add(
                             egui::Label::new(
-                                egui::RichText::new(code).font(theme::mono()).color(TEXT),
+                                egui::RichText::new(code).font(theme::mono()).color(TEXT()),
                             )
                             .wrap(),
                         );
@@ -337,16 +337,16 @@ pub fn show(
                 }
             }
             Piece::Code(code) => {
-                let mut f = TextFormat::simple(theme::mono(), TEXT);
-                f.background = BG0;
+                let mut f = TextFormat::simple(theme::mono(), TEXT());
+                f.background = BG0();
                 let run = run_for(ui, &mut runs, None);
                 run.job.append(&format!("\u{2009}{code}\u{2009}"), 0.0, f);
             }
             Piece::Link(url) => {
                 let run = run_for(ui, &mut runs, None);
                 let start = run.job.text.len();
-                let mut f = TextFormat::simple(theme::body(), ACCENT);
-                f.underline = Stroke::new(1.0, ACCENT);
+                let mut f = TextFormat::simple(theme::body(), ACCENT());
+                f.underline = Stroke::new(1.0, ACCENT());
                 run.job.append(url, 0.0, f);
                 run.targets
                     .push((start..run.job.text.len(), Target::Link(url.clone())));
@@ -356,7 +356,7 @@ pub fn show(
             run_for(ui, &mut runs, None).job.append(
                 " (editado)",
                 0.0,
-                TextFormat::simple(egui::FontId::proportional(10.0), FAINT),
+                TextFormat::simple(egui::FontId::proportional(10.0), FAINT()),
             );
         }
     }
@@ -364,7 +364,7 @@ pub fn show(
         run_for(ui, &mut runs, None).job.append(
             "(editado)",
             0.0,
-            TextFormat::simple(egui::FontId::proportional(10.0), FAINT),
+            TextFormat::simple(egui::FontId::proportional(10.0), FAINT()),
         );
     }
     flush(ui, &mut runs, &mut click);
@@ -383,17 +383,17 @@ fn format(style: &Style, revealed: &dyn Fn(usize) -> bool) -> TextFormat {
     } else {
         theme::body()
     };
-    let mut color = if style.mention { ACCENT } else { TEXT };
+    let mut color = if style.mention { ACCENT() } else { TEXT() };
     let mut f = TextFormat::simple(font, color);
     f.italics = style.italic;
     if style.mention {
-        f.background = ACCENT_SOFT;
+        f.background = ACCENT_SOFT();
     }
     if let Some(s) = style.spoiler {
         if revealed(s) {
-            f.background = BG4;
+            f.background = BG4();
         } else {
-            f.background = BG0;
+            f.background = BG0();
             color = Color32::TRANSPARENT;
             f.color = color;
         }
@@ -493,11 +493,11 @@ fn flush(ui: &mut Ui, runs: &mut Vec<Run>, click: &mut Option<Click>) {
                     &resp,
                     pos,
                     galley,
-                    TEXT,
+                    TEXT(),
                     Stroke::NONE,
                 );
             } else {
-                ui.painter().galley(pos, galley, TEXT);
+                ui.painter().galley(pos, galley, TEXT());
             }
         }
         if let Some(target) = clicked {

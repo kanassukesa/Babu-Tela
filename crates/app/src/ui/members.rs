@@ -45,7 +45,7 @@ fn row(ui: &mut Ui, core: &Core, s: &Server, m: &User, offline: bool, acts: &mut
         .on_hover_cursor(CursorIcon::PointingHand);
     if resp.hovered() {
         ui.painter()
-            .rect_filled(rect, CornerRadius::same(RADIUS_SM), BG2);
+            .rect_filled(rect, CornerRadius::same(RADIUS_SM), BG2());
     }
     let dim = if offline { 0.45 } else { 1.0 };
     let av = Rect::from_center_size(
@@ -56,15 +56,15 @@ fn row(ui: &mut Ui, core: &Core, s: &Server, m: &User, offline: bool, acts: &mut
     if offline {
         ui.scope(|ui| {
             ui.set_opacity(dim);
-            widgets::paint_avatar(ui, core, m, av, true, BG1);
+            widgets::paint_avatar(ui, core, m, av, true, BG1());
         });
     } else {
-        widgets::paint_avatar(ui, core, m, av, true, BG1);
+        widgets::paint_avatar(ui, core, m, av, true, BG1());
     }
     let color = s
         .role_color(m)
         .and_then(theme::parse_hex)
-        .unwrap_or(TEXT)
+        .unwrap_or(TEXT())
         .gamma_multiply(dim);
     let mut right = rect.right() - 8.0;
     if m.id == s.owner_id {
@@ -78,7 +78,7 @@ fn row(ui: &mut Ui, core: &Core, s: &Server, m: &User, offline: bool, acts: &mut
         right -= 16.0;
     }
     let mut job =
-        egui::text::LayoutJob::simple_singleline(m.name().to_owned(), theme::bold(14.0), color);
+        egui::text::LayoutJob::simple_singleline(s.name_of(m).to_owned(), theme::bold(14.0), color);
     job.wrap = egui::text::TextWrapping::truncate_at_width((right - av.right() - 10.0).max(10.0));
     let galley = ui.painter().layout_job(job);
     ui.painter().galley(

@@ -17,22 +17,22 @@ use crate::{t, tf};
 fn tab(ui: &mut Ui, label: &str, on: bool, add: bool) -> bool {
     let galley = ui
         .painter()
-        .layout_no_wrap(label.to_owned(), theme::bold(14.0), TEXT);
+        .layout_no_wrap(label.to_owned(), theme::bold(14.0), TEXT());
     let size = galley.size() + vec2(20.0, 8.0);
     let (rect, resp) = ui.allocate_exact_size(size, Sense::click());
     let resp = resp.on_hover_cursor(CursorIcon::PointingHand);
     let radius = CornerRadius::same(RADIUS_SM);
     let fg = if add {
         widgets::paint_gradient(ui, rect, radius, 1.0);
-        ACCENT_INK
+        ACCENT_INK()
     } else if on {
-        ui.painter().rect_filled(rect, radius, BG4);
-        TEXT
+        ui.painter().rect_filled(rect, radius, BG4());
+        TEXT()
     } else if resp.hovered() {
-        ui.painter().rect_filled(rect, radius, BG3);
-        TEXT
+        ui.painter().rect_filled(rect, radius, BG3());
+        TEXT()
     } else {
-        MUTED
+        MUTED()
     };
     ui.painter()
         .galley(rect.center() - galley.size() / 2.0, galley, fg);
@@ -47,11 +47,11 @@ pub fn draw(ui: &mut Ui, core: &mut Core, acts: &mut Acts) {
         .count();
     let current = core.friend_tab;
     super::header(ui, "friends-head", |ui| {
-        ui.add(Icon::Users.tinted(MUTED));
+        ui.add(Icon::Users.tinted(MUTED()));
         ui.label(
             egui::RichText::new(t!("friends.title"))
                 .font(theme::bold(15.0))
-                .color(TEXT),
+                .color(TEXT()),
         );
         ui.add_space(4.0);
         ui.spacing_mut().item_spacing.x = 6.0;
@@ -92,7 +92,7 @@ pub fn draw(ui: &mut Ui, core: &mut Core, acts: &mut Acts) {
 fn frow(ui: &mut Ui, add: impl FnOnce(&mut Ui)) {
     let top = ui.cursor().top();
     ui.painter()
-        .hline(ui.max_rect().x_range(), top, Stroke::new(1.0, BG3));
+        .hline(ui.max_rect().x_range(), top, Stroke::new(1.0, BG3()));
     let bg = ui.painter().add(egui::Shape::Noop);
     let r = Frame::new()
         .inner_margin(Margin::symmetric(8, 10))
@@ -107,7 +107,7 @@ fn frow(ui: &mut Ui, add: impl FnOnce(&mut Ui)) {
     if ui.rect_contains_pointer(r.rect) {
         ui.painter().set(
             bg,
-            egui::Shape::rect_filled(r.rect, CornerRadius::same(RADIUS_MD), BG3),
+            egui::Shape::rect_filled(r.rect, CornerRadius::same(RADIUS_MD), BG3()),
         );
     }
 }
@@ -118,9 +118,9 @@ fn who(ui: &mut Ui, name: &str, sub: &str) {
         ui.label(
             egui::RichText::new(name)
                 .font(theme::bold(14.0))
-                .color(TEXT),
+                .color(TEXT()),
         );
-        ui.label(egui::RichText::new(sub).size(13.0).color(MUTED));
+        ui.label(egui::RichText::new(sub).size(13.0).color(MUTED()));
     });
 }
 
@@ -144,7 +144,7 @@ fn list(ui: &mut Ui, core: &Core, tab: FriendTab, acts: &mut Acts) {
     widgets::caption(ui, &format!("{label} — {}", all.len()));
     ui.add_space(6.0);
     if all.is_empty() {
-        ui.label(egui::RichText::new(t!("friends.nobody_yet")).color(MUTED));
+        ui.label(egui::RichText::new(t!("friends.nobody_yet")).color(MUTED()));
         return;
     }
     for f in all {
@@ -155,7 +155,7 @@ fn list(ui: &mut Ui, core: &Core, tab: FriendTab, acts: &mut Acts) {
             FriendState::Accepted => f.user.status.public().label(),
         };
         frow(ui, |ui| {
-            widgets::avatar(ui, core, &f.user, 36.0, true, BG2);
+            widgets::avatar(ui, core, &f.user, 36.0, true, BG2());
             who(
                 ui,
                 f.user.name(),
@@ -235,13 +235,13 @@ fn blocked(ui: &mut Ui, core: &Core, acts: &mut Acts) {
     );
     ui.add_space(6.0);
     if ids.is_empty() {
-        ui.label(egui::RichText::new(t!("friends.no_blocks")).color(MUTED));
+        ui.label(egui::RichText::new(t!("friends.no_blocks")).color(MUTED()));
         return;
     }
     for id in ids {
         let u = core.user(id);
         frow(ui, |ui| {
-            widgets::avatar(ui, core, &u, 36.0, false, BG2);
+            widgets::avatar(ui, core, &u, 36.0, false, BG2());
             who(ui, u.name(), &widgets::handle(&u));
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 if Button::ghost(t!("friends.unblock"))
@@ -265,7 +265,7 @@ fn blocked(ui: &mut Ui, core: &Core, acts: &mut Acts) {
 fn add(ui: &mut Ui, core: &mut Core, acts: &mut Acts) {
     widgets::caption(ui, t!("friends.tab_add"));
     ui.add_space(4.0);
-    ui.label(egui::RichText::new(t!("friends.add_hint")).color(MUTED));
+    ui.label(egui::RichText::new(t!("friends.add_hint")).color(MUTED()));
     ui.add_space(8.0);
     let busy = core.busy.contains(&FormId::AddFriend);
     let error = core.errors.get(&FormId::AddFriend).cloned();

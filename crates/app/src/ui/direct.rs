@@ -31,8 +31,8 @@ pub fn card(ui: &mut Ui, core: &Core, m: &Message, a: &Attachment, acts: &mut Ac
     let total = u64::try_from(a.size).unwrap_or(0);
     let width = ui.available_width().min(WIDTH);
     Frame::new()
-        .fill(BG1)
-        .stroke(Stroke::new(1.0, BG4))
+        .fill(BG1())
+        .stroke(Stroke::new(1.0, BG4()))
         .corner_radius(CornerRadius::same(RADIUS_MD))
         .inner_margin(Margin::symmetric(14, 10))
         .show(ui, |ui| {
@@ -40,10 +40,10 @@ pub fn card(ui: &mut Ui, core: &Core, m: &Message, a: &Attachment, acts: &mut Ac
             ui.spacing_mut().item_spacing.y = 6.0;
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 10.0;
-                ui.add(Icon::Direct.tinted(ACCENT));
+                ui.add(Icon::Direct.tinted(ACCENT()));
                 ui.vertical(|ui| {
                     ui.spacing_mut().item_spacing.y = 0.0;
-                    widgets::ellipsis(ui, &a.name, theme::body(), TEXT);
+                    widgets::ellipsis(ui, &a.name, theme::body(), TEXT());
                     let from = if mine {
                         t!("direct.from_me").to_owned()
                     } else {
@@ -56,7 +56,7 @@ pub fn card(ui: &mut Ui, core: &Core, m: &Message, a: &Attachment, acts: &mut Ac
                             size = widgets::fmt_size(a.size),
                             from = from
                         ),
-                        MUTED,
+                        MUTED(),
                     );
                 });
             });
@@ -95,9 +95,9 @@ fn body(
     acts: &mut Acts,
 ) {
     match state {
-        Card::Broken => line(ui, t!("direct.broken"), FAINT),
-        Card::Elsewhere => line(ui, t!("direct.elsewhere"), FAINT),
-        Card::Stopped => line(ui, t!("direct.stopped"), FAINT),
+        Card::Broken => line(ui, t!("direct.broken"), FAINT()),
+        Card::Elsewhere => line(ui, t!("direct.elsewhere"), FAINT()),
+        Card::Stopped => line(ui, t!("direct.stopped"), FAINT()),
         Card::Sharing { sending, waiting } => {
             let mut text = match sending {
                 0 => t!("direct.sharing_idle").to_owned(),
@@ -107,7 +107,7 @@ fn body(
             if *waiting > 0 {
                 text.push_str(&tf!("direct.queue", n = waiting));
             }
-            line(ui, &text, MUTED);
+            line(ui, &text, MUTED());
             if let Some(n) = as_number(id)
                 && Button::ghost(t!("direct.stop_sharing"))
                     .small()
@@ -131,7 +131,7 @@ fn body(
             } else {
                 tf!("direct.offer_offline", who = who)
             };
-            line(ui, &text, MUTED);
+            line(ui, &text, MUTED());
             if Button::primary(t!("direct.download"))
                 .small()
                 .show(ui)
@@ -151,7 +151,7 @@ fn body(
             line(
                 ui,
                 &going(*phase, *done, total, *speed, *relayed, who),
-                MUTED,
+                MUTED(),
             );
             ui.horizontal(|ui| {
                 if matches!(phase, Phase::Waiting(_) | Phase::Busy | Phase::Retrying)
@@ -180,7 +180,7 @@ fn body(
                     total = widgets::fmt_size(total as i64),
                     pct = percent(*done, total)
                 ),
-                MUTED,
+                MUTED(),
             );
             ui.horizontal(|ui| {
                 if Button::primary(t!("direct.resume"))
@@ -269,10 +269,10 @@ fn cancel(ui: &mut Ui, id: &str, acts: &mut Acts) {
 fn bar(ui: &mut Ui, done: u64, total: u64, moving: bool) {
     let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), 4.0), Sense::hover());
     let painter = ui.painter();
-    painter.rect_filled(rect, CornerRadius::same(2), BG3);
+    painter.rect_filled(rect, CornerRadius::same(2), BG3());
     let mut filled = rect;
     filled.set_width(rect.width() * fraction(done, total));
-    let color = if moving { ACCENT } else { MUTED };
+    let color = if moving { ACCENT() } else { MUTED() };
     painter.rect_filled(filled, CornerRadius::same(2), color);
 }
 

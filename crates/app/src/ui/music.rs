@@ -69,10 +69,10 @@ fn now_playing(ui: &mut Ui, view: &View, acts: &mut Acts, core: &Core) {
     };
     ui.add_space(8.0);
     Frame::new()
-        .fill(BG1)
+        .fill(BG1())
         .corner_radius(CornerRadius::same(10))
         .inner_margin(Margin::same(12))
-        .stroke(Stroke::new(1.0, BG0))
+        .stroke(Stroke::new(1.0, BG0()))
         .show(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.vertical(|ui| {
@@ -83,15 +83,15 @@ fn now_playing(ui: &mut Ui, view: &View, acts: &mut Acts, core: &Core) {
                     ui.label(
                         egui::RichText::new(t!("music.now_playing"))
                             .font(theme::small())
-                            .color(ACCENT),
+                            .color(ACCENT()),
                     );
-                    widgets::ellipsis(ui, &item.title, theme::bold(15.0), TEXT);
+                    widgets::ellipsis(ui, &item.title, theme::bold(15.0), TEXT());
                     let subtitle = subtitle_for(item);
                     if !subtitle.is_empty() {
                         ui.label(
                             egui::RichText::new(subtitle)
                                 .font(theme::tiny())
-                                .color(MUTED),
+                                .color(MUTED()),
                         );
                     }
                     let elapsed = format_time(view.elapsed as u32);
@@ -102,7 +102,7 @@ fn now_playing(ui: &mut Ui, view: &View, acts: &mut Acts, core: &Core) {
                     ui.label(
                         egui::RichText::new(format!("{elapsed} / {total}"))
                             .font(theme::tiny())
-                            .color(MUTED),
+                            .color(MUTED()),
                     );
                 });
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -140,13 +140,13 @@ fn now_playing(ui: &mut Ui, view: &View, acts: &mut Acts, core: &Core) {
                 let frac = (view.elapsed / dur as f32).clamp(0.0, 1.0);
                 let (rect, _) =
                     ui.allocate_exact_size(egui::vec2(ui.available_width(), 4.0), Sense::hover());
-                ui.painter().rect_filled(rect, CornerRadius::same(2), BG0);
+                ui.painter().rect_filled(rect, CornerRadius::same(2), BG0());
                 let fill = egui::Rect::from_min_size(
                     rect.min,
                     egui::vec2(rect.width() * frac, rect.height()),
                 );
                 ui.painter()
-                    .rect_filled(fill, CornerRadius::same(2), ACCENT);
+                    .rect_filled(fill, CornerRadius::same(2), ACCENT());
             }
         });
     let _ = core;
@@ -160,7 +160,7 @@ fn coming_up(ui: &mut Ui, view: &View, acts: &mut Acts, _core: &Core) {
     ui.label(
         egui::RichText::new(tf!("music.queue_count", n = view.items.len() - 1))
             .font(theme::bold(13.0))
-            .color(TEXT),
+            .color(TEXT()),
     );
     ui.add_space(4.0);
     ScrollArea::vertical()
@@ -175,7 +175,7 @@ fn coming_up(ui: &mut Ui, view: &View, acts: &mut Acts, _core: &Core) {
 
 fn queue_row(ui: &mut Ui, item: &Item, acts: &mut Acts) {
     Frame::new()
-        .fill(BG1)
+        .fill(BG1())
         .corner_radius(CornerRadius::same(6))
         .inner_margin(Margin::symmetric(10, 8))
         .show(ui, |ui| {
@@ -183,10 +183,10 @@ fn queue_row(ui: &mut Ui, item: &Item, acts: &mut Acts) {
                 ui.vertical(|ui| {
                     ui.spacing_mut().item_spacing.y = 1.0;
                     ui.set_width(ui.available_width() - 44.0);
-                    widgets::ellipsis(ui, &item.title, theme::body(), TEXT);
+                    widgets::ellipsis(ui, &item.title, theme::body(), TEXT());
                     let sub = subtitle_for(item);
                     if !sub.is_empty() {
-                        widgets::ellipsis(ui, &sub, theme::tiny(), MUTED);
+                        widgets::ellipsis(ui, &sub, theme::tiny(), MUTED());
                     }
                 });
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -227,7 +227,7 @@ fn link_row(
             .hint_text(hint)
             .desired_width(ui.available_width() - 130.0)
             .margin(Margin::symmetric(10, 8))
-            .background_color(BG1)
+            .background_color(BG1())
             .font(theme::body());
         let resp = ui.add_enabled(in_call, edit);
         if focus {

@@ -126,6 +126,8 @@ pub const ROUTES: &[(&str, &str, bool, Handler)] = &[
     ("PATCH", "/api/servers/{sid}", true, update_server),
     ("DELETE", "/api/servers/{sid}", true, delete_server),
     ("POST", "/api/servers/{sid}/leave", true, leave_server),
+    // my nickname in a server (empty: my own name again)
+    ("PUT", "/api/servers/{sid}/nick", true, set_nick),
     // join requests, for private servers: accepted, or turned down (or
     // given up by whoever asked)
     (
@@ -600,8 +602,8 @@ fn icon_input(st: &State, uid: i64, srv: &Row, v: Option<&Value>) -> ApiResult<V
     Ok(Value::String(url.clone()))
 }
 
-/// Name, picture and whether it is private: whichever of them the body
-/// has (apps up to 0.11 only ever send the name).
+/// Name, picture, colour and whether it is private: whichever of them the
+/// body has (apps up to 0.11 only ever send the name).
 fn update_server(st: &mut State, q: &mut Req) -> ApiResult {
     let srv = st.server_for(q.uid, q.param("sid")?)?;
     st.need(&srv, q.uid, P_MANAGE_SERVER)?;
@@ -621,7 +623,16 @@ fn update_server(st: &mut State, q: &mut Req) -> ApiResult {
         (true, Some(Value::Bool(on))) => Some(*on),
         (true, _) => return fail(400, "“private” precisa ser verdadeiro ou falso"),
     };
-    if name.is_none() && icon.is_none() && private.is_none() {
+    let color = if q.has("color") {
+        let c = str(q.get("color")).to_ascii_lowercase();
+        if !valid_color(&c) {
+            return fail(400, "Cor inválida");
+        }
+        Some(c)
+    } else {
+        None
+    };
+    if name.is_none() && icon.is_none() && private.is_none() && color.is_none() {
         return fail(400, "Nada para mudar");
     }
     st.db.tx(|| {
@@ -641,6 +652,12 @@ fn update_server(st: &mut State, q: &mut Req) -> ApiResult {
             st.db.run(
                 "UPDATE servers SET icon = ? WHERE id = ?",
                 params![icon, sid],
+            )?;
+        }
+        if let Some(c) = &color {
+            st.db.run(
+                "UPDATE servers SET color = ? WHERE id = ?",
+                params![c, sid],
             )?;
         }
         if let Some(on) = private {
@@ -712,6 +729,23 @@ fn leave_server(st: &mut State, q: &mut Req) -> ApiResult {
         return fail(400, "O dono não pode sair. Exclua o servidor.");
     }
     st.remove_member(srv.int("id"), q.uid)?;
+    ok()
+}
+
+/// What I am called in this server; an empty one goes back to my name.
+fn set_nick(st: &mut State, q: &mut Req) -> ApiResult {
+    let srv = st.server_for(q.uid, q.param("sid")?)?;
+    let nick = str(q.get("nick")).trim().to_owned();
+    let nick = if nick.is_empty() {
+        Value::Null
+    } else {
+        Value::String(text(q.get("nick"), DISPLAY_LEN, "O apelido")?)
+    };
+    st.db.run(
+        "UPDATE members SET nick = ? WHERE server_id = ? AND user_id = ?",
+        params![nick, srv.int("id"), q.uid],
+    )?;
+    st.sync_server(srv.int("id"))?;
     ok()
 }
 

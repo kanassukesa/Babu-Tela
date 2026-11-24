@@ -19,7 +19,7 @@ use crate::{t, tf};
 /// #211f4d, var(--bg0) 60%)`), drawn as rings of fading colour.
 fn backdrop(ui: &mut Ui) {
     CentralPanel::default()
-        .frame(Frame::new().fill(BG0))
+        .frame(Frame::new().fill(BG0()))
         .show(ui, |ui| {
             let r = ui.max_rect();
             let center = pos2(r.left() + r.width() * 0.25, r.top() + r.height() * 0.15);
@@ -29,7 +29,7 @@ fn backdrop(ui: &mut Ui) {
             for i in 0..steps {
                 let t = i as f32 / steps as f32;
                 let radius = reach * (1.0 - t);
-                let color = theme::mix(BG0, glow, t);
+                let color = theme::mix(BG0(), glow, t);
                 ui.painter().circle_filled(center, radius, color);
             }
         });
@@ -43,7 +43,7 @@ fn card<R>(ui: &mut Ui, id: &str, add: impl FnOnce(&mut Ui) -> R) -> R {
         .anchor(Align2::CENTER_CENTER, vec2(0.0, theme::TITLEBAR_H / 2.0))
         .show(&ctx, |ui| {
             Frame::new()
-                .fill(BG2)
+                .fill(BG2())
                 .stroke(Stroke::new(1.0, Color32::from_white_alpha(0x0d)))
                 .corner_radius(CornerRadius::same(14))
                 .inner_margin(Margin::same(28))
@@ -89,7 +89,7 @@ pub fn sign_in(ui: &mut Ui, core: &mut Core, acts: &mut Acts) {
         ui.label(
             egui::RichText::new(t!("auth.welcome"))
                 .font(theme::h1())
-                .color(TEXT),
+                .color(TEXT()),
         );
         ui.add_space(4.0);
         widgets::sub(ui, t!("auth.subtitle"));
@@ -98,7 +98,7 @@ pub fn sign_in(ui: &mut Ui, core: &mut Core, acts: &mut Acts) {
         ui.add_space(14.0);
         ui.label(
             egui::RichText::new(t!("auth.first_time"))
-                .color(FAINT)
+                .color(FAINT())
                 .size(12.5),
         );
     });
@@ -110,8 +110,8 @@ fn google_flow(ui: &mut Ui, waiting: bool, error: Option<&String>, enter: bool, 
     if waiting {
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 10.0;
-            ui.add(egui::Spinner::new().size(18.0).color(ACCENT));
-            ui.label(egui::RichText::new(t!("auth.in_browser")).color(MUTED));
+            ui.add(egui::Spinner::new().size(18.0).color(ACCENT()));
+            ui.label(egui::RichText::new(t!("auth.in_browser")).color(MUTED()));
         });
         ui.add_space(8.0);
         if widgets::link(ui, t!("common.cancel")).clicked() {
@@ -144,17 +144,17 @@ pub fn updating(ui: &mut Ui, core: &mut Core, acts: &mut Acts) {
             ui.label(
                 egui::RichText::new(t!("auth.updating"))
                     .font(theme::h1())
-                    .color(TEXT),
+                    .color(TEXT()),
             );
             ui.add_space(6.0);
-            ui.label(egui::RichText::new(tf!("auth.downloading", version = version)).color(MUTED));
+            ui.label(egui::RichText::new(tf!("auth.downloading", version = version)).color(MUTED()));
             ui.add_space(20.0);
         });
         let shown = if total > 0 { fraction } else { 0.0 };
         ui.add(
             egui::ProgressBar::new(shown)
                 .desired_height(8.0)
-                .fill(ACCENT)
+                .fill(ACCENT())
                 .corner_radius(4),
         );
         ui.add_space(6.0);
@@ -167,7 +167,7 @@ pub fn updating(ui: &mut Ui, core: &mut Core, acts: &mut Acts) {
         } else {
             widgets::fmt_size(sent as i64)
         };
-        ui.label(egui::RichText::new(amount).size(12.5).color(FAINT));
+        ui.label(egui::RichText::new(amount).size(12.5).color(FAINT()));
         ui.add_space(16.0);
         ui.vertical_centered(|ui| {
             if widgets::link(ui, t!("auth.open_now")).clicked() {
@@ -201,14 +201,14 @@ pub fn waiting(ui: &mut Ui, core: &mut Core, acts: &mut Acts) {
                     t!("auth.connecting")
                 })
                 .font(theme::h1())
-                .color(TEXT),
+                .color(TEXT()),
             );
             ui.add_space(6.0);
             let text = match left {
                 None => t!("auth.connecting_to").to_owned(),
                 Some(s) => tf!("auth.retry_in", s = s),
             };
-            ui.label(egui::RichText::new(text).color(MUTED));
+            ui.label(egui::RichText::new(text).color(MUTED()));
             // Through Tor (tor.rs): how far it is into the network (each
             // change redraws, main.rs).
             if let Some(status) = crate::tor::status() {
@@ -216,7 +216,7 @@ pub fn waiting(ui: &mut Ui, core: &mut Core, acts: &mut Acts) {
                 ui.label(
                     egui::RichText::new(super::modals::tor_text(&status))
                         .size(12.5)
-                        .color(FAINT),
+                        .color(FAINT()),
                 );
             }
             ui.add_space(20.0);

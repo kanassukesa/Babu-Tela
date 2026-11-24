@@ -219,7 +219,7 @@ impl eframe::App for App {
     }
 
     fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
-        theme::BG0.to_normalized_gamma_f32()
+        theme::BG0().to_normalized_gamma_f32()
     }
 
     /// Measuring, the test windows ignore the mouse: someone using the PC

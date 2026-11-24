@@ -267,6 +267,9 @@ pub struct User {
     /// As a server's member: who signed them in (e2e/members.rs).
     #[serde(default)]
     pub certs: Vec<serde_json::Value>,
+    /// As a server's member: what they are called there, if they chose.
+    #[serde(default)]
+    pub nick: Option<String>,
 }
 
 impl User {
@@ -444,6 +447,9 @@ pub struct Server {
     /// Who is waiting to come in: only for those who may let them.
     #[serde(default)]
     pub requests: Vec<JoinRequest>,
+    /// When it was made (ms since 1970).
+    #[serde(default)]
+    pub created: i64,
 }
 
 /// Someone who asked to join a private server.
@@ -489,6 +495,28 @@ impl Server {
 
     pub fn member(&self, id: i64) -> Option<&User> {
         self.members.iter().find(|m| m.id == id)
+    }
+
+    /// What `u` is called in this server: the nickname they chose here, or
+    /// their name.
+    pub fn name_of<'a>(&'a self, u: &'a User) -> &'a str {
+        self.member(u.id)
+            .and_then(|m| m.nick.as_deref())
+            .filter(|n| !n.trim().is_empty())
+            .unwrap_or_else(|| u.name())
+    }
+
+    /// The channels grouped by category, in the order they come.
+    pub fn by_category(&self) -> Vec<(&str, Vec<&Channel>)> {
+        let mut cats: Vec<(&str, Vec<&Channel>)> = Vec::new();
+        for c in &self.channels {
+            let k = c.category_name();
+            match cats.iter_mut().find(|(name, _)| *name == k) {
+                Some((_, list)) => list.push(c),
+                None => cats.push((k, vec![c])),
+            }
+        }
+        cats
     }
 
     pub fn role(&self, id: i64) -> Option<&Role> {

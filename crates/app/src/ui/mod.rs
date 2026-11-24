@@ -16,6 +16,8 @@ pub mod modals;
 pub mod music;
 pub mod player;
 pub mod security;
+mod server_settings;
+mod settings;
 pub mod sidebar;
 mod slides;
 pub mod stage;
@@ -137,7 +139,7 @@ fn app(ui: &mut Ui, core: &mut Core, acts: &mut Acts) {
             .show_separator_line(false)
             .frame(
                 Frame::new()
-                    .fill(BG0)
+                    .fill(BG0())
                     .inner_margin(Margin::symmetric(0, 10)),
             )
             .show(ui, |ui| sidebar::rail(ui, core, acts));
@@ -145,7 +147,7 @@ fn app(ui: &mut Ui, core: &mut Core, acts: &mut Acts) {
             .exact_size(SIDEBAR_W)
             .resizable(false)
             .show_separator_line(false)
-            .frame(Frame::new().fill(BG1).corner_radius(CornerRadius {
+            .frame(Frame::new().fill(BG1()).corner_radius(CornerRadius {
                 nw: 12,
                 ne: 0,
                 sw: 0,
@@ -158,12 +160,12 @@ fn app(ui: &mut Ui, core: &mut Core, acts: &mut Acts) {
                 .exact_size(MEMBERS_W)
                 .resizable(false)
                 .show_separator_line(false)
-                .frame(Frame::new().fill(BG1).inner_margin(Margin::same(8)))
+                .frame(Frame::new().fill(BG1()).inner_margin(Margin::same(8)))
                 .show(ui, |ui| members::draw(ui, core, acts));
         }
     }
     CentralPanel::default()
-        .frame(Frame::new().fill(BG2))
+        .frame(Frame::new().fill(BG2()))
         .show(ui, |ui| {
             if core.view.is_home() && core.current_dm().is_none() {
                 friends::draw(ui, core, acts);
@@ -186,6 +188,11 @@ fn app(ui: &mut Ui, core: &mut Core, acts: &mut Acts) {
 }
 
 /// A centred message for an area with nothing to show (`.empty`).
+/// Whether a section of a server's settings is shown to me there.
+pub fn server_settings_shown(s: &crate::model::Server, tab: crate::core::ServerTab) -> bool {
+    server_settings::shown(s, tab)
+}
+
 pub fn empty(ui: &mut Ui, title: &str, text: &str) {
     ui.with_layout(
         Layout::centered_and_justified(egui::Direction::TopDown),
@@ -195,10 +202,10 @@ pub fn empty(ui: &mut Ui, title: &str, text: &str) {
                 ui.label(
                     egui::RichText::new(title)
                         .font(theme::bold(17.0))
-                        .color(TEXT),
+                        .color(TEXT()),
                 );
                 ui.add_space(6.0);
-                ui.label(egui::RichText::new(text).color(MUTED));
+                ui.label(egui::RichText::new(text).color(MUTED()));
             });
         },
     );
@@ -216,7 +223,7 @@ pub fn header(ui: &mut Ui, id: &str, add: impl FnOnce(&mut Ui)) {
             ui.painter().hline(
                 ui.max_rect().x_range().expand(16.0),
                 line_y - 0.5,
-                Stroke::new(1.0, BG0),
+                Stroke::new(1.0, BG0()),
             );
             ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
                 ui.spacing_mut().item_spacing.x = 10.0;
@@ -247,7 +254,7 @@ fn titlebar(ui: &mut Ui, core: &mut Core, acts: &mut Acts) {
         .exact_size(TITLEBAR_H)
         .resizable(false)
         .show_separator_line(false)
-        .frame(Frame::new().fill(BG0))
+        .frame(Frame::new().fill(BG0()))
         .show(ui, |ui| {
             let full = ui.max_rect();
             let buttons = 3.0 * 46.0;
@@ -273,7 +280,7 @@ fn titlebar(ui: &mut Ui, core: &mut Core, acts: &mut Acts) {
                 Align2::LEFT_CENTER,
                 babutela_buildinfo::NAME,
                 theme::bold(12.0),
-                MUTED,
+                MUTED(),
             );
             // The three window buttons at the right.
             let mut left = full.right() - buttons;
@@ -288,8 +295,8 @@ fn titlebar(ui: &mut Ui, core: &mut Core, acts: &mut Acts) {
                 let resp = ui.interact(r, Id::unique(("win", i)), Sense::click());
                 let (bg, fg) = match (resp.hovered(), close) {
                     (true, true) => (DANGER, Color32::WHITE),
-                    (true, false) => (BG3, TEXT),
-                    _ => (BG0, MUTED),
+                    (true, false) => (BG3(), TEXT()),
+                    _ => (BG0(), MUTED()),
                 };
                 ui.painter().rect_filled(r, CornerRadius::ZERO, bg);
                 let ir = Rect::from_center_size(r.center(), Vec2::splat(icons::WINDOW));
@@ -477,8 +484,8 @@ fn toasts(ctx: &egui::Context, core: &Core) {
             ui.set_max_width((r.width() * 0.8).min(560.0));
             for t in &core.toasts {
                 Frame::new()
-                    .fill(BG0)
-                    .stroke(Stroke::new(1.0, BG4))
+                    .fill(BG0())
+                    .stroke(Stroke::new(1.0, BG4()))
                     .corner_radius(CornerRadius::same(RADIUS_MD))
                     .inner_margin(Margin::symmetric(16, 10))
                     .shadow(egui::epaint::Shadow {
@@ -488,7 +495,7 @@ fn toasts(ctx: &egui::Context, core: &Core) {
                         color: Color32::from_black_alpha(0xa0),
                     })
                     .show(ui, |ui| {
-                        ui.label(egui::RichText::new(&t.text).color(TEXT));
+                        ui.label(egui::RichText::new(&t.text).color(TEXT()));
                     });
                 ui.add_space(8.0);
             }

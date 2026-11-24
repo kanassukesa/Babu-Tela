@@ -83,11 +83,11 @@ fn seal_line(ui: &mut Ui, m: &Message) {
     }
     let (text, color) = match &m.seal {
         Seal::Open => return,
-        Seal::Locked => (t!("chat.seal_opening").to_owned(), MUTED),
-        Seal::Missing => (t!("chat.seal_missing").to_owned(), MUTED),
+        Seal::Locked => (t!("chat.seal_opening").to_owned(), MUTED()),
+        Seal::Missing => (t!("chat.seal_missing").to_owned(), MUTED()),
         Seal::Refused(why) => (tf!("chat.seal_refused", why = why), DANGER),
-        Seal::Plain => (t!("chat.seal_plain").to_owned(), FAINT),
-        Seal::Gone => (t!("chat.seal_gone").to_owned(), MUTED),
+        Seal::Plain => (t!("chat.seal_plain").to_owned(), FAINT()),
+        Seal::Gone => (t!("chat.seal_gone").to_owned(), MUTED()),
     };
     ui.label(egui::RichText::new(text).size(11.0).color(color));
 }
@@ -184,19 +184,19 @@ pub fn draw(ui: &mut Ui, core: &mut Core, acts: &mut Acts) {
     super::header(ui, "chat-head", |ui| {
         match &dm {
             Some(u) => {
-                widgets::avatar(ui, core, u, 26.0, true, BG2);
+                widgets::avatar(ui, core, u, 26.0, true, BG2());
                 ui.label(
                     egui::RichText::new(&name)
                         .font(theme::bold(15.0))
-                        .color(TEXT),
+                        .color(TEXT()),
                 );
             }
             None => {
-                ui.add(Icon::Hash.tinted(MUTED));
+                ui.add(Icon::Hash.tinted(MUTED()));
                 ui.label(
                     egui::RichText::new(&name)
                         .font(theme::bold(15.0))
-                        .color(TEXT),
+                        .color(TEXT()),
                 );
             }
         }
@@ -208,11 +208,11 @@ pub fn draw(ui: &mut Ui, core: &mut Core, acts: &mut Acts) {
                 ui.painter().vline(
                     x,
                     (r.center().y - 9.0)..=(r.center().y + 9.0),
-                    Stroke::new(1.0, BG4),
+                    Stroke::new(1.0, BG4()),
                 );
                 ui.add_space(10.0);
                 ui.allocate_ui(vec2((ui.available_width() - right).max(10.0), 20.0), |ui| {
-                    widgets::ellipsis(ui, t, theme::small(), MUTED);
+                    widgets::ellipsis(ui, t, theme::small(), MUTED());
                 });
             }
             None => {
@@ -337,7 +337,7 @@ fn record_alert(ui: &mut Ui, core: &Core, alert: &crate::e2e::Alert, acts: &mut 
         Alert::Unlisted(uid) => (tf!("chat.rec_unlisted", name = name(*uid)), Some(*uid)),
     };
     Frame::new()
-        .fill(BG3)
+        .fill(BG3())
         .stroke(Stroke::new(1.0, DANGER))
         .corner_radius(CornerRadius::same(RADIUS))
         .inner_margin(Margin::symmetric(14, 10))
@@ -361,7 +361,7 @@ fn record_alert(ui: &mut Ui, core: &Core, alert: &crate::e2e::Alert, acts: &mut 
 /// the composer, with the way to the dialog that sorts it out.
 fn e2e_banner(ui: &mut Ui, needs_keys: bool, changed: Option<(i64, String)>, acts: &mut Acts) {
     Frame::new()
-        .fill(BG3)
+        .fill(BG3())
         .stroke(Stroke::new(1.0, WARN))
         .corner_radius(CornerRadius::same(RADIUS))
         .inner_margin(Margin::symmetric(14, 10))
@@ -385,7 +385,7 @@ fn e2e_banner(ui: &mut Ui, needs_keys: bool, changed: Option<(i64, String)>, act
 
 fn locked(ui: &mut Ui, blocked: bool) {
     Frame::new()
-        .fill(BG3)
+        .fill(BG3())
         .corner_radius(CornerRadius::same(RADIUS))
         .inner_margin(Margin::symmetric(16, 12))
         .show(ui, |ui| {
@@ -397,7 +397,7 @@ fn locked(ui: &mut Ui, blocked: bool) {
                     } else {
                         t!("chat.no_send_perm")
                     })
-                    .color(MUTED),
+                    .color(MUTED()),
                 );
             });
         });
@@ -421,7 +421,7 @@ fn typing(ui: &mut Ui, core: &Core, cid: i64) {
         2 | 3 => tf!("chat.typing_some", names = who.join(", ")),
         _ => t!("chat.typing_many").to_owned(),
     };
-    ui.label(egui::RichText::new(text).size(12.0).color(MUTED));
+    ui.label(egui::RichText::new(text).size(12.0).color(MUTED()));
 }
 
 // ---------------------------------------------------------------- the composer
@@ -500,7 +500,7 @@ fn composer(
     // and who it may mean.
     let mut mention: Option<(usize, usize, Vec<User>)> = None;
     let composer_box = Frame::new()
-        .fill(BG3)
+        .fill(BG3())
         .corner_radius(CornerRadius::same(RADIUS))
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
@@ -509,16 +509,16 @@ fn composer(
                     .inner_margin(Margin::symmetric(12, 6))
                     .show(ui, |ui| {
                         ui.horizontal(|ui| {
-                            ui.add(Icon::Reply.image(icons::SMALL, MUTED));
+                            ui.add(Icon::Reply.image(icons::SMALL, MUTED()));
                             ui.label(
                                 egui::RichText::new(t!("chat.replying_to"))
                                     .size(12.0)
-                                    .color(MUTED),
+                                    .color(MUTED()),
                             );
                             ui.label(
                                 egui::RichText::new(name)
                                     .font(theme::bold(12.0))
-                                    .color(TEXT),
+                                    .color(TEXT()),
                             );
                             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                                 if widgets::icon_button_sized(
@@ -538,7 +538,7 @@ fn composer(
                     });
                 let y = ui.cursor().top();
                 ui.painter()
-                    .hline(ui.max_rect().x_range(), y, Stroke::new(1.0, BG2));
+                    .hline(ui.max_rect().x_range(), y, Stroke::new(1.0, BG2()));
             }
             for up in &sends {
                 upload_row(ui, up, acts);
@@ -849,8 +849,8 @@ fn mention_list(
         .fixed_pos(pos2(above.left(), above.top() - height - 8.0))
         .show(ctx, |ui| {
             Frame::new()
-                .fill(BG1)
-                .stroke(Stroke::new(1.0, BG4))
+                .fill(BG1())
+                .stroke(Stroke::new(1.0, BG4()))
                 .corner_radius(CornerRadius::same(RADIUS))
                 .inner_margin(Margin::same(4))
                 .shadow(egui::epaint::Shadow {
@@ -869,7 +869,7 @@ fn mention_list(
                         Align2::LEFT_CENTER,
                         "MEMBROS",
                         theme::bold(11.0),
-                        FAINT,
+                        FAINT(),
                     );
                     let moving = ui.input(|i| i.pointer.is_moving());
                     for (i, u) in found.iter().enumerate() {
@@ -882,27 +882,27 @@ fn mention_list(
                         let lit = i == selected;
                         if lit {
                             ui.painter()
-                                .rect_filled(rect, CornerRadius::same(RADIUS_SM), BG3);
+                                .rect_filled(rect, CornerRadius::same(RADIUS_SM), BG3());
                         }
                         let av = Rect::from_min_size(
                             pos2(rect.left() + 8.0, rect.center().y - 13.0),
                             Vec2::splat(26.0),
                         );
-                        widgets::paint_avatar(ui, core, u, av, true, if lit { BG3 } else { BG1 });
+                        widgets::paint_avatar(ui, core, u, av, true, if lit { BG3() } else { BG1() });
                         let name = ui.painter().layout_no_wrap(
                             u.name().to_owned(),
                             theme::bold(14.0),
-                            TEXT,
+                            TEXT(),
                         );
                         let at = pos2(av.right() + 10.0, rect.center().y - name.size().y / 2.0);
                         let after = at.x + name.size().x + 8.0;
-                        ui.painter().galley(at, name, TEXT);
+                        ui.painter().galley(at, name, TEXT());
                         ui.painter().text(
                             pos2(after, rect.center().y),
                             Align2::LEFT_CENTER,
                             format!("@{}", u.username),
                             theme::small(),
-                            MUTED,
+                            MUTED(),
                         );
                         if resp.hovered() && moving {
                             hovered = Some(i);
@@ -957,7 +957,7 @@ fn input_line(
             let width = (full.width() - left - GAP - right).max(40.0);
             let edit = TextEdit::multiline(draft)
                 .id(id)
-                .hint_text(egui::RichText::new(place).color(FAINT))
+                .hint_text(egui::RichText::new(place).color(FAINT()))
                 .desired_rows(1)
                 .desired_width(width)
                 .char_limit(crate::net::MAX_MESSAGE)
@@ -1081,7 +1081,7 @@ fn direct_toggle(ui: &mut Ui, on: bool, acts: &mut Acts) {
         .show(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 8.0;
-                let ink = if on { ACCENT } else { MUTED };
+                let ink = if on { ACCENT() } else { MUTED() };
                 let galley = ui
                     .painter()
                     .layout_no_wrap(label.to_owned(), theme::bold(12.0), ink);
@@ -1091,9 +1091,9 @@ fn direct_toggle(ui: &mut Ui, on: bool, acts: &mut Acts) {
                 if ui.is_rect_visible(rect) {
                     let radius = CornerRadius::same(RADIUS_SM);
                     let (fill, edge) = if on {
-                        (ACCENT_SOFT, ACCENT)
+                        (ACCENT_SOFT(), ACCENT())
                     } else {
-                        (BG1, BG4)
+                        (BG1(), BG4())
                     };
                     let p = ui.painter();
                     p.rect_filled(rect, radius, fill);
@@ -1110,7 +1110,7 @@ fn direct_toggle(ui: &mut Ui, on: bool, acts: &mut Acts) {
                         p.rect_stroke(
                             rect.expand(2.0),
                             radius,
-                            Stroke::new(1.5, ACCENT),
+                            Stroke::new(1.5, ACCENT()),
                             egui::StrokeKind::Outside,
                         );
                     }
@@ -1130,7 +1130,7 @@ fn direct_toggle(ui: &mut Ui, on: bool, acts: &mut Acts) {
                 } else {
                     t!("chat.send_direct_off")
                 };
-                widgets::ellipsis(ui, hint, theme::tiny(), MUTED);
+                widgets::ellipsis(ui, hint, theme::tiny(), MUTED());
                 if resp.on_hover_cursor(CursorIcon::PointingHand).clicked() {
                     acts.later(|c| c.direct_send = !c.direct_send);
                 }
@@ -1152,14 +1152,14 @@ fn upload_row(ui: &mut Ui, up: &Upload, acts: &mut Acts) {
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 8.0;
                 let icon = if up.direct { Icon::Direct } else { Icon::Clip };
-                ui.add(icon.image(icons::SMALL, MUTED));
+                ui.add(icon.image(icons::SMALL, MUTED()));
                 let what = match (up.direct, up.files) {
                     (false, 1) => t!("chat.sending_one").to_owned(),
                     (false, n) => tf!("chat.sending_many", n = n),
                     (true, 1) => t!("chat.preparing_one").to_owned(),
                     (true, n) => tf!("chat.preparing_many", n = n),
                 };
-                ui.label(egui::RichText::new(what).size(12.0).color(TEXT));
+                ui.label(egui::RichText::new(what).size(12.0).color(TEXT()));
                 ui.label(
                     egui::RichText::new(tf!(
                         "chat.upload_progress",
@@ -1168,7 +1168,7 @@ fn upload_row(ui: &mut Ui, up: &Upload, acts: &mut Acts) {
                         pct = (up.fraction * 100.0).floor() as u32
                     ))
                     .size(12.0)
-                    .color(MUTED),
+                    .color(MUTED()),
                 );
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     let cancel = widgets::icon_button_sized(
@@ -1187,24 +1187,24 @@ fn upload_row(ui: &mut Ui, up: &Upload, acts: &mut Acts) {
             });
             let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), 4.0), Sense::hover());
             let painter = ui.painter();
-            painter.rect_filled(rect, CornerRadius::same(2), BG1);
+            painter.rect_filled(rect, CornerRadius::same(2), BG1());
             let mut done = rect;
             done.set_width(rect.width() * up.fraction);
-            painter.rect_filled(done, CornerRadius::same(2), ACCENT);
+            painter.rect_filled(done, CornerRadius::same(2), ACCENT());
         });
 }
 
 fn chip(ui: &mut Ui, name: &str, i: usize, acts: &mut Acts) {
     Frame::new()
-        .fill(BG1)
+        .fill(BG1())
         .corner_radius(CornerRadius::same(RADIUS_SM))
         .inner_margin(Margin::symmetric(8, 4))
         .show(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 6.0;
-                ui.add(Icon::File.image(icons::SMALL, MUTED));
+                ui.add(Icon::File.image(icons::SMALL, MUTED()));
                 ui.allocate_ui(vec2(160.0, 16.0), |ui| {
-                    widgets::ellipsis(ui, name, theme::tiny(), TEXT);
+                    widgets::ellipsis(ui, name, theme::tiny(), TEXT());
                 });
                 let label = tf!("chat.remove_file", name = name);
                 if widgets::icon_button_sized(ui, Icon::X, 18.0, 12.0, Ib::Bare, &label).clicked() {
@@ -1297,7 +1297,7 @@ fn messages(
                     } else {
                         format!("#{name}")
                     };
-                    ui.label(egui::RichText::new(title).font(theme::h1()).color(TEXT));
+                    ui.label(egui::RichText::new(title).font(theme::h1()).color(TEXT()));
                     ui.add_space(4.0);
                     ui.label(
                         egui::RichText::new(if dm {
@@ -1305,7 +1305,7 @@ fn messages(
                         } else {
                             t!("chat.channel_start")
                         })
-                        .color(MUTED),
+                        .color(MUTED()),
                     );
                 });
         }
@@ -1351,16 +1351,16 @@ fn day_line(ui: &mut Ui, day: &str) {
     let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), 16.0), Sense::hover());
     let galley = ui
         .painter()
-        .layout_no_wrap(day.to_owned(), theme::bold(12.0), FAINT);
+        .layout_no_wrap(day.to_owned(), theme::bold(12.0), FAINT());
     let mid = rect.center();
     let half = galley.size().x / 2.0 + 10.0;
-    let line = Stroke::new(1.0, BG4);
+    let line = Stroke::new(1.0, BG4());
     ui.painter()
         .hline((rect.left() + 16.0)..=(mid.x - half), mid.y, line);
     ui.painter()
         .hline((mid.x + half)..=(rect.right() - 16.0), mid.y, line);
     ui.painter()
-        .galley(mid - galley.size() / 2.0, galley, FAINT);
+        .galley(mid - galley.size() / 2.0, galley, FAINT());
     ui.add_space(6.0);
 }
 
@@ -1403,7 +1403,7 @@ fn message(
     let color = s
         .and_then(|s| s.member(author_id).and_then(|mm| s.role_color(mm)))
         .and_then(theme::parse_hex)
-        .unwrap_or(TEXT);
+        .unwrap_or(TEXT());
     let highlight = core.mentions_me(&m.content);
     if !grouped {
         ui.add_space(12.0);
@@ -1428,7 +1428,7 @@ fn message(
                 pos2(gutter.center().x - 19.0, gutter.top() + 2.0),
                 Vec2::splat(38.0),
             );
-            widgets::paint_avatar(ui, core, &author, av, false, BG2);
+            widgets::paint_avatar(ui, core, &author, av, false, BG2());
             if ui
                 .interact(av, Id::unique(("av", m.id)), Sense::click())
                 .on_hover_cursor(CursorIcon::PointingHand)
@@ -1443,15 +1443,17 @@ fn message(
             if let Some(r) = &m.reply {
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 6.0;
-                    ui.add(Icon::Reply.image(icons::SMALL, MUTED));
-                    let who = r.author.as_ref().map_or(t!("chat.unknown"), |a| a.name());
-                    ui.label(egui::RichText::new(who).font(theme::bold(12.0)).color(TEXT));
+                    ui.add(Icon::Reply.image(icons::SMALL, MUTED()));
+                    let who = r.author.as_ref().map_or(t!("chat.unknown"), |a| {
+                        core.current_server().map_or(a.name(), |s| s.name_of(a))
+                    });
+                    ui.label(egui::RichText::new(who).font(theme::bold(12.0)).color(TEXT()));
                     let quote = match (r.content.is_empty(), &r.sticker) {
                         (false, _) => r.content.as_str(),
                         (true, Some(_)) => t!("chat.a_sticker"),
                         (true, None) => t!("chat.an_attachment"),
                     };
-                    widgets::ellipsis(ui, quote, theme::tiny(), MUTED);
+                    widgets::ellipsis(ui, quote, theme::tiny(), MUTED());
                 });
             }
             if !grouped {
@@ -1460,7 +1462,9 @@ fn message(
                     let name = ui
                         .add(
                             egui::Label::new(
-                                egui::RichText::new(author.name())
+                                egui::RichText::new(
+                                    core.current_server().map_or(author.name(), |s| s.name_of(&author)),
+                                )
                                     .font(theme::bold(14.0))
                                     .color(color),
                             )
@@ -1481,7 +1485,7 @@ fn message(
                     ui.label(
                         egui::RichText::new(fmt_time(m.created))
                             .size(11.0)
-                            .color(FAINT),
+                            .color(FAINT()),
                     );
                 });
             }
@@ -1558,7 +1562,7 @@ fn message(
     let bar = tools_rect(rect, tool_count(m, mine, can_delete, dm));
     let hovered = ui.rect_contains_pointer(rect) || ui.rect_contains_pointer(bar);
     let bg = if highlight {
-        Some(ACCENT_SOFT)
+        Some(ACCENT_SOFT())
     } else if hovered {
         Some(Color32::from_black_alpha(0x1f))
     } else {
@@ -1574,7 +1578,7 @@ fn message(
         ui.painter().rect_filled(
             Rect::from_min_size(rect.min, vec2(3.0, rect.height())),
             CornerRadius::ZERO,
-            ACCENT,
+            ACCENT(),
         );
     }
     if grouped && hovered {
@@ -1583,7 +1587,7 @@ fn message(
             Align2::CENTER_CENTER,
             hm(m.created),
             egui::FontId::proportional(10.0),
-            FAINT,
+            FAINT(),
         );
     }
     let editing_this = editing.as_ref().is_some_and(|e| e.id == m.id);
@@ -1600,7 +1604,7 @@ fn edit_box(ui: &mut Ui, e: &mut Editing, acts: &mut Acts) {
             .desired_rows(2)
             .desired_width(f32::INFINITY)
             .char_limit(crate::net::MAX_MESSAGE)
-            .background_color(BG0)
+            .background_color(BG0())
             .return_key(KeyboardShortcut::new(Modifiers::SHIFT, Key::Enter)),
     );
     if std::mem::take(&mut e.focus) {
@@ -1612,7 +1616,7 @@ fn edit_box(ui: &mut Ui, e: &mut Editing, acts: &mut Acts) {
     ui.label(
         egui::RichText::new(t!("chat.edit_hint"))
             .size(11.0)
-            .color(FAINT),
+            .color(FAINT()),
     );
 }
 
@@ -1643,11 +1647,11 @@ fn tools(
     // Painted after the message and before the next one, so it covers the
     // bottom of the message above, as the old toolbar did.
     let painter = ui.painter().clone();
-    painter.rect_filled(bar, CornerRadius::same(RADIUS_MD), BG1);
+    painter.rect_filled(bar, CornerRadius::same(RADIUS_MD), BG1());
     painter.rect_stroke(
         bar,
         CornerRadius::same(RADIUS_MD),
-        Stroke::new(1.0, BG4),
+        Stroke::new(1.0, BG4()),
         egui::StrokeKind::Inside,
     );
     let mut x = bar.left() + 2.0;
@@ -1660,11 +1664,11 @@ fn tools(
             .on_hover_text(tip);
         let fg = match (resp.hovered(), what) {
             (true, 4) => DANGER,
-            (true, _) => TEXT,
-            _ => MUTED,
+            (true, _) => TEXT(),
+            _ => MUTED(),
         };
         if resp.hovered() {
-            painter.rect_filled(r, CornerRadius::same(RADIUS_SM), BG3);
+            painter.rect_filled(r, CornerRadius::same(RADIUS_SM), BG3());
         }
         let ir = Rect::from_center_size(r.center(), Vec2::splat(icons::SIZE));
         icon.image(icons::SIZE, fg).paint_at(ui, ir);
@@ -1739,7 +1743,7 @@ fn sticker(ui: &mut Ui, core: &Core, mid: i64, gid: &str, acts: &mut Acts) {
         found @ (Lookup::Loading | Lookup::Failed) => {
             let (rect, _) = ui.allocate_exact_size(Vec2::splat(SIDE), Sense::hover());
             ui.painter()
-                .rect_filled(rect, CornerRadius::same(RADIUS_MD), BG1);
+                .rect_filled(rect, CornerRadius::same(RADIUS_MD), BG1());
             if matches!(found, Lookup::Failed) {
                 // GIPHY did not answer; it is asked again in a minute.
                 ui.painter().text(
@@ -1747,7 +1751,7 @@ fn sticker(ui: &mut Ui, core: &Core, mid: i64, gid: &str, acts: &mut Acts) {
                     Align2::CENTER_CENTER,
                     t!("chat.giphy_silent"),
                     theme::tiny(),
-                    FAINT,
+                    FAINT(),
                 );
             }
             return;
@@ -1777,17 +1781,17 @@ fn sticker(ui: &mut Ui, core: &Core, mid: i64, gid: &str, acts: &mut Acts) {
         }
         Frames::Loading => {
             ui.painter()
-                .rect_filled(rect, CornerRadius::same(RADIUS_MD), BG1);
+                .rect_filled(rect, CornerRadius::same(RADIUS_MD), BG1());
         }
         Frames::Failed => {
             ui.painter()
-                .rect_filled(rect, CornerRadius::same(RADIUS_MD), BG1);
+                .rect_filled(rect, CornerRadius::same(RADIUS_MD), BG1());
             ui.painter().text(
                 rect.center(),
                 Align2::CENTER_CENTER,
                 t!("chat.sticker_unavailable"),
                 theme::tiny(),
-                FAINT,
+                FAINT(),
             );
         }
     }
@@ -1810,15 +1814,15 @@ fn sticker(ui: &mut Ui, core: &Core, mid: i64, gid: &str, acts: &mut Acts) {
 /// A sticker GIPHY no longer has (or a server without GIPHY).
 fn gone_sticker(ui: &mut Ui) {
     Frame::new()
-        .fill(BG1)
-        .stroke(Stroke::new(1.0, BG4))
+        .fill(BG1())
+        .stroke(Stroke::new(1.0, BG4()))
         .corner_radius(CornerRadius::same(RADIUS_MD))
         .inner_margin(Margin::symmetric(14, 10))
         .show(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 8.0;
-                ui.add(Icon::Sticker.tinted(FAINT));
-                ui.label(egui::RichText::new(t!("chat.sticker_unavailable")).color(MUTED));
+                ui.add(Icon::Sticker.tinted(FAINT()));
+                ui.label(egui::RichText::new(t!("chat.sticker_unavailable")).color(MUTED()));
             });
         });
 }
@@ -1834,13 +1838,13 @@ pub fn star_button(ui: &mut Ui, rect: Rect, id: Id, kept: bool) -> Response {
         .interact(rect, id, Sense::click())
         .on_hover_cursor(CursorIcon::PointingHand)
         .on_hover_text(tip);
-    let bg = if resp.hovered() { BG3 } else { BG0 };
+    let bg = if resp.hovered() { BG3() } else { BG0() };
     ui.painter()
         .circle_filled(rect.center(), rect.width() / 2.0, bg.gamma_multiply(0.9));
     let (icon, color) = if kept {
         (Icon::StarOn, WARN)
     } else {
-        (Icon::Star, TEXT)
+        (Icon::Star, TEXT())
     };
     let ir = Rect::from_center_size(rect.center(), Vec2::splat(icons::SMALL));
     icon.image(icons::SMALL, color).paint_at(ui, ir);
@@ -1855,7 +1859,7 @@ fn reactions(ui: &mut Ui, core: &Core, m: &Message, acts: &mut Acts) {
         for r in &m.reactions {
             let mine = r.users.contains(&me);
             let text = format!("{} {}", r.emoji, r.users.len());
-            let galley = ui.painter().layout_no_wrap(text, theme::small(), TEXT);
+            let galley = ui.painter().layout_no_wrap(text, theme::small(), TEXT());
             let size = galley.size() + vec2(16.0, 4.0);
             let (rect, resp) = ui.allocate_exact_size(size, Sense::click());
             let names: Vec<String> = r
@@ -1868,17 +1872,17 @@ fn reactions(ui: &mut Ui, core: &Core, m: &Message, acts: &mut Acts) {
                 .on_hover_text(names.join(", "));
             let radius = CornerRadius::same(10);
             ui.painter()
-                .rect_filled(rect, radius, if mine { ACCENT_SOFT } else { BG3 });
+                .rect_filled(rect, radius, if mine { ACCENT_SOFT() } else { BG3() });
             if mine {
                 ui.painter().rect_stroke(
                     rect,
                     radius,
-                    Stroke::new(1.0, ACCENT),
+                    Stroke::new(1.0, ACCENT()),
                     egui::StrokeKind::Inside,
                 );
             }
             ui.painter()
-                .galley(rect.center() - galley.size() / 2.0, galley, TEXT);
+                .galley(rect.center() - galley.size() / 2.0, galley, TEXT());
             if resp.clicked() {
                 let (mid, emoji) = (m.id, r.emoji.clone());
                 acts.later(move |c| c.react(mid, &emoji));
@@ -1912,7 +1916,7 @@ fn attachment(ui: &mut Ui, core: &Core, a: &Attachment, acts: &mut Acts) {
                 let (rect, resp) =
                     ui.allocate_exact_size(vec2(260.0_f32.min(max.x), 160.0), Sense::click());
                 ui.painter()
-                    .rect_filled(rect, CornerRadius::same(RADIUS_MD), BG0);
+                    .rect_filled(rect, CornerRadius::same(RADIUS_MD), BG0());
                 resp
             }
         };
@@ -1933,7 +1937,7 @@ fn attachment(ui: &mut Ui, core: &Core, a: &Attachment, acts: &mut Acts) {
                 Vec2::splat(SIDE),
             );
             ui.painter()
-                .circle_filled(corner.center(), SIDE / 2.0, BG0.gamma_multiply(0.9));
+                .circle_filled(corner.center(), SIDE / 2.0, BG0().gamma_multiply(0.9));
             let mut over = ui.new_child(egui::UiBuilder::new().max_rect(corner));
             download_button(&mut over, core, a, SIDE, acts);
         }
@@ -1946,17 +1950,17 @@ fn attachment(ui: &mut Ui, core: &Core, a: &Attachment, acts: &mut Acts) {
     };
     let saved = core.saves.get(&a.url);
     let card = Frame::new()
-        .fill(BG1)
-        .stroke(Stroke::new(1.0, BG4))
+        .fill(BG1())
+        .stroke(Stroke::new(1.0, BG4()))
         .corner_radius(CornerRadius::same(RADIUS_MD))
         .inner_margin(Margin::symmetric(14, 10))
         .show(ui, |ui| {
             let row = ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 10.0;
-                ui.add(icon.tinted(ACCENT));
+                ui.add(icon.tinted(ACCENT()));
                 ui.vertical(|ui| {
                     ui.spacing_mut().item_spacing.y = 0.0;
-                    ui.label(egui::RichText::new(&a.name).color(ACCENT));
+                    ui.label(egui::RichText::new(&a.name).color(ACCENT()));
                     let line = match saved {
                         Some(Saved::Going(p)) => tf!(
                             "chat.saving",
@@ -1966,10 +1970,10 @@ fn attachment(ui: &mut Ui, core: &Core, a: &Attachment, acts: &mut Acts) {
                         ),
                         _ => widgets::fmt_size(a.size),
                     };
-                    ui.label(egui::RichText::new(line).size(12.0).color(MUTED));
+                    ui.label(egui::RichText::new(line).size(12.0).color(MUTED()));
                 });
                 if saved.is_none() && sealed {
-                    ui.add(Icon::Save.image(icons::SIZE, MUTED));
+                    ui.add(Icon::Save.image(icons::SIZE, MUTED()));
                 }
             });
             let width = row.response.rect.width();
@@ -1977,11 +1981,11 @@ fn attachment(ui: &mut Ui, core: &Core, a: &Attachment, acts: &mut Acts) {
                 Some(Saved::Going(p)) => {
                     ui.add_space(6.0);
                     let (rect, _) = ui.allocate_exact_size(vec2(width, 4.0), Sense::hover());
-                    ui.painter().rect_filled(rect, CornerRadius::same(2), BG3);
+                    ui.painter().rect_filled(rect, CornerRadius::same(2), BG3());
                     let mut done = rect;
                     done.set_width(rect.width() * p.fraction());
                     ui.painter()
-                        .rect_filled(done, CornerRadius::same(2), ACCENT);
+                        .rect_filled(done, CornerRadius::same(2), ACCENT());
                     ui.ctx()
                         .request_repaint_after(std::time::Duration::from_millis(200));
                 }
